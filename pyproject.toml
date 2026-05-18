@@ -19,6 +19,7 @@ dependencies = [
     "alembic",
     "redis>=5.0",
     "httpx",
+    "psycopg2-binary",
 ]
 
 [project.optional-dependencies]
