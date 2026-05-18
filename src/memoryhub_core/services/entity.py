@@ -103,7 +103,6 @@ async def find_or_create_entity(
     if embedding:
         # Query for entity nodes with similar embeddings
         try:
-            from memoryhub_core.models.memory import MemoryNode
             distance_expr = MemoryNode.embedding.cosine_distance(embedding)
             vec_stmt = (
                 select(MemoryNode, distance_expr.label("distance"))
