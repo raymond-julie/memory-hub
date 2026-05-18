@@ -131,7 +131,7 @@ Enterprise-scoped knowledge graduation requires human-in-the-loop approval. The 
 
 | Issue | Relationship |
 |---|---|
-| #170 (graph-enhanced memory) | Knowledge nodes participate in entity graph like any memory. `content_type` filter added to `_build_search_filters`, which #170's graph traversal already respects. |
+| #170 (graph-enhanced memory) | Knowledge nodes participate in entity graph like any memory. `content_type` filter added to `_build_search_filters`, which #170's graph traversal already respects. Note: #170 Phase 2 introduces `scope="entity"` for extracted entity nodes. Entity nodes can carry `content_type="knowledge"` when the entity assertion is graduated (e.g., "PostgreSQL" as a canonical entity vs "postgres" as an alias). The two dimensions compose: `scope` classifies structural role, `content_type` classifies epistemic status. |
 | #171 (knowledge compilation) | Compiled articles (`branch_type="compiled_article"`) gain a trust signal: `content_type="knowledge"` vs `"experiential"` distinguishes articles built from governed facts vs raw observations. |
 | #235 (memory promotion) | Scope promotion changes WHO can see it. Graduation changes TRUST LEVEL. These compose: graduate user-scoped memory to knowledge, then promote to project-scoped knowledge. Independent operations. |
 | #237 (behavioral memory) | `behavioral` is a third `content_type` value. Behavioral memories (agent configuration) are neither experiential observations nor graduated facts. |

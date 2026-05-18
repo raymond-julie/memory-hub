@@ -28,7 +28,7 @@ None of these sources are affiliated with or aware of MemoryHub.
 
 Three independent sources converge on the same conclusion: enterprise AI agents need governed, externalized memory with explicit relationships -- but the path to getting there is not "buy a graph database."
 
-Every deployed personal AI agents company-wide and discovered that personal agents create maintenance burden, context isolation, and knowledge fragility. Their pivot to shared team agents validates MemoryHub's scope-hierarchy design. Gartner defines "context graphs" (decision traces + procedural knowledge) as distinct from knowledge graphs (entities + ontologies) and predicts 50%+ of AI agent systems will use them by 2028. MemoryHub is architecturally a context graph. Sakhatsky argues that most teams don't need a graph database at all -- PostgreSQL with recursive CTEs handles shallow traversal, and the real value is in rules and inference, not graph topology. This validates MemoryHub's choice of PostgreSQL + pgvector over Neo4j.
+Every deployed personal AI agents company-wide and discovered that personal agents create maintenance burden, context isolation, and knowledge fragility. Their pivot to shared team agents validates MemoryHub's scope-hierarchy design. Gartner defines "context graphs" (decision traces + procedural knowledge) as distinct from knowledge graphs (entities + ontologies) and predicts 50%+ of AI agent systems will use them by 2028. MemoryHub's architecture aligns with Gartner's context graph definition -- it stores decision traces, rationale branches, and procedural knowledge rather than entity ontologies. Sakhatsky argues that most teams don't need a graph database at all -- PostgreSQL with recursive CTEs handles shallow traversal, and the real value is in rules and inference, not graph topology. This validates MemoryHub's choice of PostgreSQL + pgvector over Neo4j.
 
 ---
 
@@ -84,6 +84,8 @@ Every is pivoting to "shared team resources with defined jobs" rather than "indi
 
 
 ## Mapping to MemoryHub Capabilities
+
+*Note: Some capabilities below are design-stage and not yet deployed. Entity extraction (#170 Phase 2), the extraction pipeline (#240), conversation persistence (#168), and governed compaction (#169) are designed but not yet implemented. Scope hierarchy, RBAC, contradiction detection, versioning, and provenance tracking are shipped.*
 
 ### Context isolation --> Scope hierarchy
 
