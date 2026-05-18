@@ -18,6 +18,7 @@ dependencies = [
     "minio",
     "alembic",
     "redis>=5.0",
+    "httpx",
 ]
 
 [project.optional-dependencies]
