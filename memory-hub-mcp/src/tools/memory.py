@@ -40,7 +40,7 @@ _READ_OPTS = frozenset({
 })
 _SIMILAR_OPTS = frozenset({"threshold", "max_results", "offset"})
 _RELATIONSHIPS_OPTS = frozenset({
-    "relationship_type", "direction", "include_provenance",
+    "relationship_type", "direction", "include_provenance", "as_of",
 })
 _FOCUS_HISTORY_OPTS = frozenset({"start_date", "end_date"})
 _LIST_PROJECTS_OPTS = frozenset({"filter"})

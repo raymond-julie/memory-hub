@@ -6,6 +6,7 @@ a single action-dispatched tool following the manage_project pattern.
 
 import logging
 import uuid
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Annotated, Any
 
@@ -143,6 +144,16 @@ async def manage_graph(
             ),
         ),
     ] = False,
+    as_of: Annotated[
+        str | None,
+        Field(
+            description=(
+                "action='get_relationships': ISO-8601 timestamp to query edges "
+                "active at that point in time. Omit to return only currently "
+                "active edges."
+            ),
+        ),
+    ] = None,
     # ── get_similar params ───────────────────────────────────────────────────
     memory_id: Annotated[
         str | None,
@@ -246,7 +257,7 @@ async def manage_graph(
         elif action == "get_relationships":
             return await _handle_get_relationships(
                 ctx, claims, tenant, session,
-                node_id, relationship_type, direction, include_provenance, project_id,
+                node_id, relationship_type, direction, include_provenance, as_of, project_id,
             )
         else:  # get_similar
             return await _handle_get_similar(
@@ -290,6 +301,13 @@ async def _handle_create_relationship(
         raise ToolError(
             f"Invalid relationship_type {relationship_type!r}. "
             f"Must be one of: {', '.join(_VALID_TYPES)}."
+        )
+
+    if relationship_type == "mentions":
+        raise ToolError(
+            "The 'mentions' relationship type is system-managed and cannot be "
+            "created manually. MENTIONS edges are created automatically by the "
+            "entity extraction pipeline."
         )
 
     try:
@@ -368,6 +386,7 @@ async def _handle_get_relationships(
     relationship_type: str | None,
     direction: str,
     include_provenance: bool,
+    as_of: str | None,
     project_id: str | None,
 ) -> dict[str, Any]:
     """Return graph edges for a memory node, with optional provenance tracing."""
@@ -392,6 +411,13 @@ async def _handle_get_relationships(
             f"Must be one of: {', '.join(_VALID_TYPES)}."
         )
 
+    parsed_as_of: datetime | None = None
+    if as_of is not None:
+        try:
+            parsed_as_of = datetime.fromisoformat(as_of)
+        except ValueError:
+            raise ToolError(f"Invalid as_of format: {as_of!r}. Use ISO-8601 (e.g., '2026-04-01T00:00:00Z').")
+
     if ctx:
         await ctx.info(f"Getting {direction} relationships for {node_id}")
 
@@ -402,6 +428,7 @@ async def _handle_get_relationships(
             tenant_id=tenant,
             relationship_type=relationship_type,
             direction=direction,
+            as_of=parsed_as_of,
         )
     except MemoryNotFoundError:
         raise ToolError(f"Memory node {node_id} not found.")
