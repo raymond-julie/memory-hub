@@ -23,10 +23,15 @@ class DecisionTraceExtractor(Extractor):
     """
 
     # Patterns for decision signals
+    # Two-group patterns (with "because/since") come first with lazy
+    # quantifiers; single-group patterns are greedy fallbacks.
+    # Deduplication by span prevents double-matching.
     DECISION_PATTERNS = [
-        r"(?:I|we)\s+(?:decided|chose|picked|selected)\s+([^.!?\n]+?)(?:\s+(?:because|since)\s+([^.!?\n]+))?",
+        r"(?:I|we)\s+(?:decided|chose|picked|selected)\s+([^.!?\n]+?)\s+(?:because|since)\s+([^.!?\n]+)",
+        r"(?:going|opted)\s+(?:with|for)\s+([^.!?\n]+?)\s+(?:because|since)\s+([^.!?\n]+)",
+        r"(?:I|we)\s+(?:decided|chose|picked|selected)\s+([^.!?\n]+)",
+        r"(?:going|opted)\s+(?:with|for)\s+([^.!?\n]+)",
         r"(?:the|our)\s+(?:approach|plan|strategy)\s+is\s+([^.!?\n]+)",
-        r"(?:going|opted)\s+(?:with|for)\s+([^.!?\n]+?)(?:\s+(?:because|since)\s+([^.!?\n]+))?",
     ]
 
     def __init__(self, llm: Callable[[str], Awaitable[str]] | None = None):
@@ -125,10 +130,16 @@ If no decision is present, return {{"has_decision": false}}."""
     async def _extract_with_patterns(self, event: TraceEvent) -> list[CandidateMemory]:
         """Use regex patterns to identify decision signals."""
         candidates = []
+        seen_spans: set[tuple[int, int]] = set()
 
         for pattern_str in self.DECISION_PATTERNS:
             pattern = re.compile(pattern_str, re.IGNORECASE)
             for match in pattern.finditer(event.content):
+                span = match.span()
+                if any(s[0] <= span[0] < s[1] or s[0] < span[1] <= s[1] for s in seen_spans):
+                    continue
+                seen_spans.add(span)
+
                 decision = match.group(1).strip()
                 rationale = match.group(2).strip() if match.lastindex >= 2 else None
 

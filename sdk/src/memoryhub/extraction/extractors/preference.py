@@ -21,12 +21,17 @@ class PreferenceExtractor(Extractor):
     """
 
     # Preference signal patterns
+    # Two-group patterns (with delimiter keyword) come first and use lazy
+    # quantifier for group 1 so the delimiter anchors correctly.
+    # Single-group patterns use greedy quantifier to capture the full phrase.
+    # _extract_patterns deduplicates overlapping spans.
     _PATTERNS = [
-        re.compile(r"\b(?:I|we)\s+prefer\s+([^,.\n]+?)(?:\s+over\s+([^,.\n]+))?", re.IGNORECASE),
+        re.compile(r"\b(?:I|we)\s+prefer\s+([^,.\n]+?)\s+over\s+([^,.\n]+)", re.IGNORECASE),
+        re.compile(r"\b(?:I|we)\s+prefer\s+([^,.\n]+)", re.IGNORECASE),
+        re.compile(r"\buse\s+([^,.\n]+?)\s+instead\s+of\s+([^,.\n]+)", re.IGNORECASE),
         re.compile(r"\balways\s+use\s+([^,.\n]+)", re.IGNORECASE),
         re.compile(r"\bnever\s+use\s+([^,.\n]+)", re.IGNORECASE),
         re.compile(r"\bdon'?t\s+use\s+([^,.\n]+)", re.IGNORECASE),
-        re.compile(r"\buse\s+([^,.\n]+?)\s+instead\s+of\s+([^,.\n]+)", re.IGNORECASE),
         re.compile(r"\bavoid\s+([^,.\n]+)", re.IGNORECASE),
     ]
 
@@ -107,9 +112,17 @@ Return empty array [] if no preferences found.
     def _extract_patterns(self, text: str) -> list[dict[str, str]]:
         """Extract preferences using regex patterns."""
         matches = []
+        seen_spans: set[tuple[int, int]] = set()
 
         for pattern in self._PATTERNS:
             for match in pattern.finditer(text):
+                span = match.span()
+                # Skip if this span overlaps with a previous match (two-group
+                # patterns are ordered first so they win over single-group)
+                if any(s[0] <= span[0] < s[1] or s[0] < span[1] <= s[1] for s in seen_spans):
+                    continue
+                seen_spans.add(span)
+
                 groups = match.groups()
                 subject = groups[0].strip() if groups else ""
                 alternative = groups[1].strip() if len(groups) > 1 and groups[1] else None
