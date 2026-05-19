@@ -122,6 +122,7 @@ class MemoryNodeRead(BaseModel):
     scope_id: str | None = None
     domains: list[str] | None = None
     content_type: ContentType = ContentType.EXPERIENTIAL
+    content_hash: str | None = None
     is_current: bool
     version: int
     previous_version_id: uuid.UUID | None

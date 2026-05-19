@@ -74,6 +74,9 @@ class MemoryNode(TimestampMixin, Base):
     # Content type classification for behavioral memory (#237)
     content_type: Mapped[str] = mapped_column(String(20), nullable=False, default="experiential")
 
+    # Content-addressed entity IDs for deduplication (#247)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     # Versioning
     is_current: Mapped[bool] = mapped_column(nullable=False, default=True, index=True)
     version: Mapped[int] = mapped_column(nullable=False, default=1)
