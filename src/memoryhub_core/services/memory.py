@@ -1766,6 +1766,7 @@ def node_to_read(
         tenant_id=node.tenant_id,
         domains=node.domains,
         content_type=node.content_type,
+        content_hash=getattr(node, 'content_hash', None),
         is_current=node.is_current,
         version=node.version,
         previous_version_id=node.previous_version_id,
