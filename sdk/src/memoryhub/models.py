@@ -38,6 +38,7 @@ class Memory(BaseModel):
     relevance_score: float | None = None
     result_type: str | None = None  # "full" or "stub"
     is_appendix: bool | None = None  # True when result is cache-stable appendix (#175)
+    content_type: str | None = None  # "declarative" or "behavioral"
 
 
 class CurationInfo(BaseModel):

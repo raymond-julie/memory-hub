@@ -74,6 +74,15 @@ async def list_memory(
         bool,
         Field(description="If true, only returns current versions."),
     ] = True,
+    content_type: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Advanced) Filter by content type. 'declarative' for facts and "
+                "preferences, 'behavioral' for demonstrated patterns. Omit to list all types."
+            ),
+        ),
+    ] = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """List memories in a scope without semantic search.
@@ -143,6 +152,7 @@ async def list_memory(
             campaign_ids=campaign_ids,
             project_ids=project_ids,
             role_names=role_names,
+            content_type=content_type,
         )
     finally:
         await release_db_session(gen)

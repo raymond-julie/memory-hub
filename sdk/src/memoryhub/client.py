@@ -440,6 +440,7 @@ class MemoryHubClient:
         domains: list[str] | None = None,
         domain_boost_weight: float | None = None,
         raw_results: bool = False,
+        content_type: str | None = None,
     ) -> SearchResult:
         """Search memories using semantic similarity.
 
@@ -488,6 +489,9 @@ class MemoryHubClient:
             raw_results: When True, bypass cache-optimized assembly and return raw
                 per-request results. Default False lets the server return the
                 stable compiled block (see #175, cache-optimized memory assembly).
+            content_type: Filter by content type. "declarative" for facts and
+                preferences (default search scope), "behavioral" for demonstrated
+                patterns. Omit to search all types.
         """
         defaults = self._project_config.retrieval_defaults
         loading = self._project_config.memory_loading
@@ -521,6 +525,8 @@ class MemoryHubClient:
         if focus is not None:
             opts["focus"] = focus
             opts["session_focus_weight"] = session_focus_weight
+        if content_type is not None:
+            opts["content_type"] = content_type
 
         data = await self._call_action(
             "search",
@@ -627,6 +633,7 @@ class MemoryHubClient:
         cursor: str | None = None,
         include_branches: bool = False,
         current_only: bool = True,
+        content_type: str | None = None,
     ) -> dict[str, Any]:
         """Enumerate memories without semantic ranking.
 
@@ -641,6 +648,8 @@ class MemoryHubClient:
             cursor: Pagination cursor from a previous list response.
             include_branches: If True, include branch memories.
             current_only: If True, only current versions.
+            content_type: Filter by content type. "declarative" for facts and
+                preferences, "behavioral" for demonstrated patterns. Omit to list all types.
         """
         opts: dict[str, Any] = {
             "max_results": max_results,
@@ -649,6 +658,8 @@ class MemoryHubClient:
         }
         if cursor is not None:
             opts["cursor"] = cursor
+        if content_type is not None:
+            opts["content_type"] = content_type
         return await self._call_action(
             "list",
             scope=scope,
@@ -669,6 +680,7 @@ class MemoryHubClient:
         project_id: str | None = None,
         domains: list[str] | None = None,
         force: bool = False,
+        content_type: str | None = None,
     ) -> WriteResult:
         """Write a new memory.
 
@@ -684,6 +696,10 @@ class MemoryHubClient:
             domains: Domain tags for the memory, e.g. ['React', 'Spring Boot'].
             force: When True, bypass near-duplicate and exact-duplicate similarity
                 gates. Regex rules (secrets, PII) are never bypassed.
+            content_type: Memory content type. "declarative" (default) for facts
+                and preferences, "behavioral" for demonstrated patterns and
+                successful approaches. Behavioral memories are not injected by
+                default — use the reconstruct action to retrieve them.
 
         Returns:
             A WriteResult. When curation detects a near-duplicate, the memory is
@@ -705,6 +721,8 @@ class MemoryHubClient:
             opts["domains"] = domains
         if force:
             opts["force"] = True
+        if content_type is not None:
+            opts["content_type"] = content_type
         data = await self._call_action(
             "write",
             content=content,

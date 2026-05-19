@@ -34,6 +34,14 @@ class MemoryScope(StrEnum):
     ENTITY = "entity"  # Phase 2: auto-extracted entity nodes
 
 
+class ContentType(StrEnum):
+    """Content classification for behavioral memory (#237)."""
+
+    EXPERIENTIAL = "experiential"
+    KNOWLEDGE = "knowledge"
+    BEHAVIORAL = "behavioral"
+
+
 class CampaignStatus(StrEnum):
     """Lifecycle states for a campaign."""
 
@@ -69,6 +77,7 @@ class MemoryNodeCreate(BaseModel):
     domains: list[str] | None = Field(
         default=None, description="Crosscutting knowledge domain tags (e.g., 'React', 'Spring Boot')"
     )
+    content_type: ContentType = Field(default=ContentType.EXPERIENTIAL, description="Memory classification type")
 
 
 class MemoryNodeUpdate(BaseModel):
@@ -112,6 +121,7 @@ class MemoryNodeRead(BaseModel):
     tenant_id: str
     scope_id: str | None = None
     domains: list[str] | None = None
+    content_type: ContentType = ContentType.EXPERIENTIAL
     is_current: bool
     version: int
     previous_version_id: uuid.UUID | None
@@ -143,6 +153,7 @@ class MemoryNodeStub(BaseModel):
     has_children: bool = False
     has_rationale: bool = False
     domains: list[str] | None = None
+    content_type: ContentType | None = None
     created_at: datetime | None = None  # needed for cache-optimized sort ordering (#175)
 
 

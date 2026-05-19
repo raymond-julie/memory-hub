@@ -231,6 +231,9 @@ def search(
     domains: list[str] | None = typer.Option(
         None, "--domain", help="Domain tags to boost",
     ),
+    content_type: str | None = typer.Option(
+        None, "--content-type", help="Filter by content type: declarative or behavioral",
+    ),
     output: OutputFormat = typer.Option(
         OutputFormat.table, "--output", "-o", help="Output format: table, json, quiet",
     ),
@@ -244,6 +247,7 @@ def search(
             return await client.search(
                 query, scope=scope, max_results=max_results,
                 project_id=_project_id, domains=domains or None,
+                content_type=content_type,
             )
 
     result = _run_command(_do(), output)
@@ -334,6 +338,9 @@ def write(
     domains: list[str] | None = typer.Option(
         None, "--domain", help="Domain tags",
     ),
+    content_type: str | None = typer.Option(
+        None, "--content-type", help="Content type: declarative (default) or behavioral",
+    ),
     output: OutputFormat = typer.Option(
         OutputFormat.table, "--output", "-o", help="Output format: table, json, quiet",
     ),
@@ -363,6 +370,7 @@ def write(
                 content, scope=scope, weight=weight,
                 parent_id=parent_id, branch_type=branch_type,
                 project_id=_project_id, domains=domains or None,
+                content_type=content_type,
             )
 
     result = _run_command(_do(), output)

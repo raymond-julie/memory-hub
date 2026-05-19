@@ -184,6 +184,7 @@ async def create_memory(
         branch_type=data.branch_type,
         metadata_=node_metadata,
         domains=data.domains,
+        content_type=data.content_type,
         embedding=embedding,
         is_current=True,
         version=1,
@@ -666,6 +667,7 @@ def _build_search_filters(
     project_ids: set[str] | None = None,
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
+    content_type: str | None = None,
 ) -> list | None:
     """Build the SQL filter list shared by search_memories and count_search_matches.
 
@@ -772,6 +774,9 @@ def _build_search_filters(
         )
         filters.append(MemoryNode.id.in_(entity_subq))
 
+    if content_type is not None:
+        filters.append(MemoryNode.content_type == content_type)
+
     return filters
 
 
@@ -787,6 +792,7 @@ async def count_search_matches(
     project_ids: set[str] | None = None,
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
+    content_type: str | None = None,
 ) -> int:
     """Count memories matching the same filter set used by search_memories.
 
@@ -805,6 +811,7 @@ async def count_search_matches(
         project_ids=project_ids,
         role_names=role_names,
         entity_names=entity_names,
+        content_type=content_type,
     )
     if filters is None:
         return 0
@@ -828,6 +835,7 @@ async def search_memories(
     project_ids: set[str] | None = None,
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
+    content_type: str | None = None,
 ) -> list[tuple[MemoryNodeRead | MemoryNodeStub, float]]:
     """Search memories using pgvector cosine similarity.
 
@@ -854,6 +862,7 @@ async def search_memories(
         project_ids=project_ids,
         role_names=role_names,
         entity_names=entity_names,
+        content_type=content_type,
     )
     if filters is None:
         return []
@@ -921,6 +930,7 @@ async def search_memories(
                         branch_type=node.branch_type,
                         has_children=has_children,
                         has_rationale=has_rationale,
+                        content_type=node.content_type,
                         created_at=node.created_at,
                     ),
                     relevance_score,
@@ -942,6 +952,7 @@ async def list_memories(
     campaign_ids: set[str] | None = None,
     project_ids: set[str] | None = None,
     role_names: set[str] | None = None,
+    content_type: str | None = None,
 ) -> tuple[list[MemoryNodeRead | MemoryNodeStub], str | None]:
     """Enumerate memories without semantic ranking.
 
@@ -954,6 +965,7 @@ async def list_memories(
         campaign_ids=campaign_ids,
         project_ids=project_ids,
         role_names=role_names,
+        content_type=content_type,
     )
     if filters is None:
         return [], None
@@ -1080,6 +1092,7 @@ async def search_memories_with_focus(
     graph_relationship_types: list[str] | None = None,
     graph_boost_weight: float = 0.2,
     entity_names: list[str] | None = None,
+    content_type: str | None = None,
 ) -> FocusedSearchResult:
     """Two-vector retrieval with session focus bias.
 
@@ -1129,6 +1142,7 @@ async def search_memories_with_focus(
             project_ids=project_ids,
             role_names=role_names,
             entity_names=entity_names,
+            content_type=content_type,
         )
         return FocusedSearchResult(results=plain)
 
@@ -1150,6 +1164,7 @@ async def search_memories_with_focus(
         project_ids=project_ids,
         role_names=role_names,
         entity_names=entity_names,
+        content_type=content_type,
     )
     if filters is None:
         return FocusedSearchResult(
@@ -1428,6 +1443,7 @@ async def search_memories_with_focus(
                         branch_type=node.branch_type,
                         has_children=has_children,
                         has_rationale=has_rationale,
+                        content_type=node.content_type,
                         created_at=node.created_at,
                     ),
                     relevance_score,
@@ -1749,6 +1765,7 @@ def node_to_read(
         owner_id=node.owner_id,
         tenant_id=node.tenant_id,
         domains=node.domains,
+        content_type=node.content_type,
         is_current=node.is_current,
         version=node.version,
         previous_version_id=node.previous_version_id,

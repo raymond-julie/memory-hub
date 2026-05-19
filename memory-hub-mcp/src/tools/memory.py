@@ -21,6 +21,7 @@ _VALID_ACTIONS = frozenset({
     # Read path
     "search", "read", "list", "similar", "relationships",
     "status", "focus_history", "list_projects", "describe_project",
+    "reconstruct",
     # Write path
     "write", "update", "delete", "set_focus", "relate",
     "report", "resolve", "set_rule",
@@ -34,9 +35,11 @@ _SEARCH_OPTS = frozenset({
     "max_response_tokens", "raw_results", "weight_threshold",
     "current_only", "owner_id", "graph_depth",
     "graph_relationship_types", "graph_boost_weight", "entities",
+    "content_type",
 })
 _LIST_OPTS = frozenset({
     "max_results", "cursor", "include_branches", "current_only",
+    "content_type",
 })
 _READ_OPTS = frozenset({
     "include_versions", "history_offset", "history_max_versions", "hydrate",
@@ -47,9 +50,10 @@ _RELATIONSHIPS_OPTS = frozenset({
 })
 _FOCUS_HISTORY_OPTS = frozenset({"start_date", "end_date"})
 _LIST_PROJECTS_OPTS = frozenset({"filter"})
+_RECONSTRUCT_OPTS = frozenset({"owner_id"})
 _WRITE_OPTS = frozenset({
     "weight", "parent_id", "branch_type", "metadata", "domains",
-    "project_description", "force", "owner_id",
+    "project_description", "force", "owner_id", "content_type",
 })
 _UPDATE_OPTS = frozenset({"weight", "metadata", "domains"})
 _SET_RULE_OPTS = frozenset({
@@ -151,6 +155,9 @@ async def memory(
         Near-duplicate detection by cosine similarity.
       relationships(memory_id, [project_id, options: direction, include_provenance])
         Query graph edges for a memory node.
+      reconstruct([options: owner_id])
+        Retrieve behavioral memories sorted by weight desc. Convenience alias
+        for search(content_type="behavioral") with weight-based ordering.
       status()
         Session identity, scopes, project memberships.
       focus_history(project_id, [options: start_date, end_date])
@@ -205,6 +212,8 @@ async def memory(
         return await _dispatch_similar(memory_id, project_id, opts, ctx)
     if action == "relationships":
         return await _dispatch_relationships(memory_id, project_id, opts, ctx)
+    if action == "reconstruct":
+        return await _dispatch_reconstruct(scope, project_id, opts, ctx)
     if action == "status":
         return await _dispatch_status(ctx)
     if action == "focus_history":
@@ -315,6 +324,25 @@ async def _dispatch_describe_project(project_id, ctx):
     # Design normalizes project_name → project_id; map back.
     return await manage_project(
         action="describe", project_name=project_id, ctx=ctx,
+    )
+
+
+async def _dispatch_reconstruct(scope, project_id, opts, ctx):
+    from src.tools.search_memory import search_memory
+    # Reconstruct is essentially search(content_type="behavioral") with
+    # weight-based ordering (raw_results=True) for behavioral pattern replay.
+    search_opts = _forward(opts, _RECONSTRUCT_OPTS)
+    search_opts["content_type"] = "behavioral"
+    search_opts["raw_results"] = True
+    # Default query for reconstruct: broad semantic search for all behavioral
+    # memories. Callers can provide a more specific query via the search action
+    # if they want to filter behavioral memories by topic.
+    return await search_memory(
+        query="successful approaches and demonstrated patterns",
+        scope=scope,
+        project_id=project_id,
+        ctx=ctx,
+        **search_opts,
     )
 
 

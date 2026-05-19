@@ -167,6 +167,17 @@ async def write_memory(
             ),
         ),
     ] = False,
+    content_type: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Advanced) Memory content type. 'declarative' (default) for "
+                "facts and preferences, 'behavioral' for demonstrated patterns "
+                "and successful approaches. Behavioral memories are not injected "
+                "by default — use the reconstruct action to retrieve them."
+            ),
+        ),
+    ] = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """Create a new memory node or branch in the memory tree.
@@ -305,6 +316,7 @@ async def write_memory(
             metadata=metadata,
             domains=domains,
             scope_id=scope_id_value,
+            content_type=content_type,
         )
     except ValidationError as exc:
         errors = exc.errors()

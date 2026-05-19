@@ -593,6 +593,16 @@ async def search_memory(
             ),
         ),
     ] = False,
+    content_type: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Advanced) Filter by content type. 'declarative' for facts and "
+                "preferences (default search scope), 'behavioral' for demonstrated "
+                "patterns. Omit to search all types."
+            ),
+        ),
+    ] = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """Search memories using semantic similarity.
@@ -771,6 +781,7 @@ async def search_memory(
                 graph_relationship_types=graph_relationship_types,
                 graph_boost_weight=graph_boost_weight,
                 entity_names=entities,
+                content_type=content_type,
             )
             graph_bundle = bundle
             results = bundle.results
@@ -798,6 +809,7 @@ async def search_memory(
                 project_ids=project_ids,
                 role_names=role_names,
                 entity_names=entities,
+                content_type=content_type,
             )
 
         # Count all matching memories under the same filter set so the agent
