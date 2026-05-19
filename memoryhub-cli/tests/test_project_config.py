@@ -401,7 +401,9 @@ def test_config_regenerate_errors_when_no_yaml(tmp_path: Path):
     runner = CliRunner()
     result = runner.invoke(app, ["config", "regenerate", "--dir", str(tmp_path)])
     assert result.exit_code != 0
-    assert "memoryhub config init" in result.output
+    # Normalize whitespace to handle Rich console wrapping on long paths
+    normalized_output = " ".join(result.output.split())
+    assert "memoryhub config init" in normalized_output
 
 
 def test_rewrite_rule_file_does_not_touch_yaml(tmp_path: Path):
