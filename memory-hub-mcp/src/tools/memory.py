@@ -26,7 +26,7 @@ _VALID_ACTIONS = frozenset({
     "write", "update", "delete", "set_focus", "relate",
     "report", "resolve", "set_rule",
     "create_project", "add_member", "remove_member", "promote",
-    "checkpoint",
+    "graduate", "checkpoint",
 })
 
 # Per-action option keys accepted for forwarding.
@@ -62,6 +62,7 @@ _SET_RULE_OPTS = frozenset({
     "enabled", "priority",
 })
 _PROMOTE_OPTS = frozenset({"target_scope", "target_scope_id"})
+_GRADUATE_OPTS = frozenset({"evidence", "reviewer_note"})
 _CHECKPOINT_OPTS = frozenset({"workflow_name", "state", "scope", "scope_id"})
 
 
@@ -195,6 +196,8 @@ async def memory(
         Remove user from project.
       promote(memory_id, options: {target_scope}, [options: target_scope_id])
         Promote memory to broader scope. Creates new memory linked via derived_from.
+      graduate(memory_id, [options: evidence, reviewer_note])
+        Graduate experiential memory to knowledge. Creates new knowledge node linked via derived_from.
       checkpoint(options: {workflow_name}, [options: state, scope, scope_id])
         Durable key-value state for recurring agents. Upsert when state provided,
         read when only workflow_name given.
@@ -256,6 +259,8 @@ async def memory(
         return await _dispatch_remove_member(project_id, opts, ctx)
     if action == "promote":
         return await _dispatch_promote(memory_id, project_id, opts, ctx)
+    if action == "graduate":
+        return await _dispatch_graduate(memory_id, project_id, opts, ctx)
     # checkpoint (last remaining action)
     return await _dispatch_checkpoint(opts, ctx)
 
@@ -589,6 +594,53 @@ async def _dispatch_promote(memory_id, project_id, opts, ctx):
                 "created_at": promoted.created_at.isoformat(),
             },
             "message": f"Memory promoted from '{promoted.metadata.get('promoted_from', {}).get('source_id', 'unknown')}' to {promoted.scope} scope",
+        }
+    finally:
+        await release_db_session(gen)
+
+
+async def _dispatch_graduate(memory_id, project_id, opts, ctx):
+    """Dispatch graduate action to service layer."""
+    import uuid as uuid_module
+    from src.tools._deps import (
+        get_db_session,
+        get_embedding_service,
+        release_db_session,
+    )
+    from src.core.authz import get_claims_from_context, get_tenant_filter
+    from memoryhub_core.services.graduation import graduate_memory
+
+    _require("graduate", "memory_id", memory_id)
+
+    claims = get_claims_from_context()
+    tenant_id = get_tenant_filter(claims)
+    graduated_by = claims["sub"]
+
+    session, gen = await get_db_session()
+    try:
+        embedding_service = get_embedding_service()
+        graduated = await graduate_memory(
+            memory_id=uuid_module.UUID(memory_id),
+            session=session,
+            embedding_service=embedding_service,
+            tenant_id=tenant_id,
+            graduated_by=graduated_by,
+            evidence=opts.get("evidence"),
+            reviewer_note=opts.get("reviewer_note"),
+            project_id=project_id,
+        )
+        return {
+            "graduated_memory": {
+                "id": str(graduated.id),
+                "scope": graduated.scope,
+                "scope_id": graduated.scope_id,
+                "content": graduated.content,
+                "content_type": graduated.content_type,
+                "weight": graduated.weight,
+                "metadata": graduated.metadata,
+                "created_at": graduated.created_at.isoformat(),
+            },
+            "message": f"Memory graduated from experiential to knowledge",
         }
     finally:
         await release_db_session(gen)

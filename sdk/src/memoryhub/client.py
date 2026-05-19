@@ -831,6 +831,50 @@ class MemoryHubClient:
             raise MemoryHubError("Promote response missing 'promoted_memory' field")
         return Memory.model_validate(promoted_data)
 
+    async def graduate(
+        self,
+        memory_id: str,
+        *,
+        evidence: str | None = None,
+        reviewer_note: str | None = None,
+        project_id: str | None = None,
+    ) -> Memory:
+        """Graduate an experiential memory to knowledge status.
+
+        Creates a new memory with content_type='knowledge' linked to the
+        original via a derived_from relationship. The source memory remains
+        unchanged. Optionally attaches an evidence branch with supporting
+        context for the graduation.
+
+        Args:
+            memory_id: ID of the memory to graduate (must be experiential).
+            evidence: Optional evidence text to attach as an evidence branch.
+            reviewer_note: Optional note explaining why the memory was graduated.
+            project_id: Project context for the graduation.
+
+        Returns:
+            The newly graduated knowledge memory.
+
+        Raises:
+            ValueError: Source memory is not experiential.
+            NotFoundError: Source memory does not exist.
+        """
+        opts: dict[str, Any] = {}
+        if evidence is not None:
+            opts["evidence"] = evidence
+        if reviewer_note is not None:
+            opts["reviewer_note"] = reviewer_note
+        data = await self._call_action(
+            "graduate",
+            memory_id=memory_id,
+            project_id=project_id,
+            options=opts if opts else None,
+        )
+        graduated_data = data.get("graduated_memory")
+        if graduated_data is None:
+            raise MemoryHubError("Graduate response missing 'graduated_memory' field")
+        return Memory.model_validate(graduated_data)
+
     # ── Lifecycle ───────────────────────────────────────────────────
 
     async def report_contradiction(
