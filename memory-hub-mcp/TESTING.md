@@ -118,8 +118,13 @@ The Inspector provides a web UI to:
 # Get server info (streamable-http endpoint)
 curl -X POST https://<route-url>/mcp/ \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"1.0.0","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}'
 ```
+
+> **Note:** The `Accept: application/json, text/event-stream` header is
+> required by FastMCP 3.x streamable-HTTP transport. Without it, the server
+> returns HTTP 406 Not Acceptable.
 
 ## Unit Tests
 
@@ -147,16 +152,15 @@ make test
 
 ### Testing FastMCP Decorated Functions
 
-FastMCP decorators wrap functions in special objects. Access the underlying function via `.fn` for direct testing:
+In FastMCP 3, `@mcp.tool(...)` returns the function directly. Tests call
+the tool without `.fn`:
 
 ```python
 from src.tools.my_tool import my_tool
 
-my_tool_fn = my_tool.fn  # Access underlying function
-
 @pytest.mark.asyncio
 async def test_my_tool():
-    result = await my_tool_fn(param1="value1")
+    result = await my_tool(param1="value1")
     assert result == "expected"
 ```
 

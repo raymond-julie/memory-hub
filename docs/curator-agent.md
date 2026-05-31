@@ -27,15 +27,15 @@ This is the cheapest gate. It catches obvious problems before anything touches t
 
 pgvector cosine similarity query against existing memories in the same (owner_id, scope, is_current=true). Milliseconds.
 
-| Similarity | Action |
-|---|---|
-| > 0.95 | Reject with pointer to existing memory (near-duplicate) |
-| 0.80 - 0.95 | Flag in metadata, allow write |
-| < 0.80 | Allow write (distinct memory) |
+| Similarity | Action | Write succeeds? |
+|---|---|---|
+| > 0.95 | Reject with pointer to existing memory (exact duplicate) | No -- `ToolError` raised |
+| 0.80 - 0.95 | Flag as `possible_duplicate` in metadata, allow write | Yes -- advisory only |
+| < 0.80 | Allow write (distinct memory) | Yes |
 
 Thresholds are configurable via curation rules. Users with intentionally similar memories (e.g., dataset-specific notes) can raise the dedup threshold.
 
-Note the key difference from earlier designs: the 0.80-0.95 range does NOT escalate to an LLM. The memory is written with a curation flag, and the similar_count is returned to the agent.
+The 0.80-0.95 range is advisory: the memory is written successfully, a `possible_duplicate` flag is added to the curation metadata, and `similar_count` is returned in the response. The calling agent's LLM decides whether to investigate (via `manage_graph(action="get_similar", ...)`) or ignore the flag. This is a deliberate design choice -- the MCP server never blocks writes for ambiguous similarity. Only exact duplicates (>0.95) and secrets/PII matches are blocked.
 
 ### No inline sampling
 

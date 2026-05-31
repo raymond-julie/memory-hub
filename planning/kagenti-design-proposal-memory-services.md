@@ -138,7 +138,7 @@ spec:
     name: memoryhub-gateway-token
 ```
 
-Any agent on the platform — regardless of framework — can then discover and call MemoryHub's tools (`memory_search_memory`, `memory_write_memory`, etc.) through the standard `MCP_URL` endpoint.
+Any agent on the platform — regardless of framework — can then discover and call MemoryHub's tools through the standard `MCP_URL` endpoint. With the compact profile (default, `MEMORYHUB_TOOL_PROFILE=compact`), the gateway-prefixed tools are `memory_register_session` and `memory_memory` (action-dispatch). With the full profile (`MEMORYHUB_TOOL_PROFILE=full`), the prefixed tools are `memory_search_memory`, `memory_write_memory`, etc.
 
 **What this gives you:** Every agent gains access to governed memory. The MCP Gateway handles routing. Agents use their existing MCP client patterns. No new abstractions to learn.
 

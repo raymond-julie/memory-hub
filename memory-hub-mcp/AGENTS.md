@@ -70,23 +70,18 @@ from tools.my_tool import my_tool
 
 ### Testing FastMCP Decorated Functions
 
-**IMPORTANT**: FastMCP decorators (`@mcp.tool`, `@mcp.resource`, `@mcp.prompt`) wrap functions in special objects. To test these functions directly, you must access the underlying function using the `.fn` attribute.
+In FastMCP 3, `@mcp.tool(...)` returns the function directly, so tests
+call the tool without `.fn`:
 
-**Correct Testing Pattern**:
 ```python
 # In tests/tools/test_my_tool.py
 from src.tools.my_tool import my_tool
 
-# Access the underlying function
-my_tool_fn = my_tool.fn
-
 @pytest.mark.asyncio
 async def test_my_tool():
-    result = await my_tool_fn(param1="value1", param2="value2")
+    result = await my_tool(param1="value1", param2="value2")
     assert result == "expected"
 ```
-
-**Why This Matters**: Attempting to call decorated functions directly in tests will fail because the decorator returns a `FunctionTool`, `Resource`, or `Prompt` object, not the original function.
 
 ### Dependency Management
 

@@ -296,15 +296,15 @@ make test                                       # full suite
 .venv/bin/pytest --cov=src --cov-report=html    # with coverage
 ```
 
-The FastMCP decorators wrap tool functions in tool objects; tests access
-the underlying function via the `.fn` attribute:
+In FastMCP 3, `@mcp.tool(...)` returns the function directly, so tests
+call the tool without `.fn`:
 
 ```python
 from src.tools.search_memory import search_memory
 
 @pytest.mark.asyncio
 async def test_search():
-    result = await search_memory.fn(query="container preferences")
+    result = await search_memory(query="container preferences")
     assert "results" in result
 ```
 

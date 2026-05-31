@@ -42,11 +42,10 @@ Update the test to cover:
 **Testing Pattern Reminder:**
 ```python
 from src.tools.my_tool import my_tool
-my_tool_fn = my_tool.fn  # Access underlying function
 
 @pytest.mark.asyncio
 async def test_my_tool():
-    result = await my_tool_fn(param="value")
+    result = await my_tool(param="value")
     assert result == "expected"
 ```
 
