@@ -1,4 +1,4 @@
-"""Tests for memoryhub_cli.config — API key detection, server URL resolution, and config init URL prompt."""
+"""Tests for memoryhub_cli.config -- API key, server URL, and config merge."""
 
 from __future__ import annotations
 

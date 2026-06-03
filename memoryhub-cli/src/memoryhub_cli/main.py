@@ -23,7 +23,13 @@ from memoryhub.exceptions import (
 from rich.table import Table
 
 from memoryhub_cli.admin import admin_app
-from memoryhub_cli.config import get_api_key, get_connection_params, get_server_url, load_config, save_config
+from memoryhub_cli.config import (
+    get_api_key,
+    get_connection_params,
+    get_server_url,
+    load_config,
+    save_config,
+)
 from memoryhub_cli.export import export_app
 from memoryhub_cli.output import (
     EXIT_AUTH_ERROR,
@@ -914,7 +920,7 @@ def config_init(
             existing_config["url"] = url_input.strip()
             save_config(existing_config)
             console.print(
-                f"[green]URL saved to ~/.config/memoryhub/config.json[/green]"
+                "[green]URL saved to ~/.config/memoryhub/config.json[/green]"
             )
 
 
