@@ -619,6 +619,47 @@ def update(
 
 
 @app.command()
+def graduate(
+    memory_id: str = typer.Argument(..., help="Memory UUID to graduate"),
+    evidence: str | None = typer.Option(
+        None, "--evidence", "-e", help="Evidence text supporting graduation",
+    ),
+    reviewer_note: str | None = typer.Option(
+        None, "--reviewer-note", help="Note explaining why memory was graduated",
+    ),
+    project_id: str | None = typer.Option(
+        None, "--project-id", "-p", help="Project ID for context",
+    ),
+    output: OutputFormat = typer.Option(
+        OutputFormat.table, "--output", "-o", help="Output format: table, json, quiet",
+    ),
+):
+    """Graduate an experiential memory to knowledge status."""
+    client = _get_client(output)
+    _project_id = project_id or _get_project_id_default()
+
+    async def _do():
+        async with client:
+            return await client.graduate(
+                memory_id,
+                evidence=evidence,
+                reviewer_note=reviewer_note,
+                project_id=_project_id,
+            )
+
+    memory = _run_command(_do(), output)
+
+    if output == OutputFormat.json:
+        json_success(memory.model_dump())
+        return
+    if output == OutputFormat.quiet:
+        return
+
+    console.print(f"[green]Graduated:[/green] {memory.id}")
+    console.print(f"  Content type: knowledge | Weight: {memory.weight:.2f}")
+
+
+@app.command()
 def history(
     memory_id: str = typer.Argument(..., help="Memory UUID"),
     max_versions: int = typer.Option(20, "--max", "-n", help="Maximum versions to show"),
