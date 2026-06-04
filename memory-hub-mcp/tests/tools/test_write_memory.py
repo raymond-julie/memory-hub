@@ -184,6 +184,7 @@ async def test_write_memory_forwards_tenant_id_to_service():
             content="hello",
             scope="user",
             owner_id="wjackson",
+            content_type="experiential",
         )
 
     assert "error" not in result or result.get("error") is not True
@@ -241,7 +242,7 @@ async def test_write_memory_gated_returns_structured_response():
             return_value={"compiled_count": 28, "will_recompile": True},
         ),
     ):
-        result = await write_memory(content="near-dup content", scope="user")
+        result = await write_memory(content="near-dup content", scope="user", content_type="experiential")
 
     assert result["memory"] is None
     assert result["curation"]["gated"] is True
@@ -289,7 +290,7 @@ async def test_write_memory_regex_block_still_raises_tool_error():
         ),
         pytest.raises(ToolError, match="Curation rule blocked write: secrets_scan"),
     ):
-        await write_memory(content="AKIAIOSFODNN7EXAMPLE", scope="user")
+        await write_memory(content="AKIAIOSFODNN7EXAMPLE", scope="user", content_type="experiential")
 
 
 @pytest.mark.asyncio
@@ -357,7 +358,7 @@ async def test_write_memory_force_forwarded_to_create_memory():
         ) as mock_create,
         patch("src.tools.write_memory.broadcast_after_write", new_callable=AsyncMock),
     ):
-        result = await write_memory(content="forced write", scope="user", force=True)
+        result = await write_memory(content="forced write", scope="user", force=True, content_type="experiential")
 
     assert result["memory"] is not None
     _, kwargs = mock_create.call_args

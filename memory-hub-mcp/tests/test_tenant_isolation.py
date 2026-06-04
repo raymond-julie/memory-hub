@@ -325,6 +325,7 @@ async def test_write_as_a_read_as_b_returns_not_found():
             content="secret tenant A data",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
 
     assert write_result.get("error") is not True, write_result
@@ -394,6 +395,7 @@ async def test_same_tenant_write_read_roundtrip_works():
             content="tenant A own memory",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     assert write_result.get("error") is not True
     memory_id = write_result["memory"]["id"]
@@ -471,11 +473,13 @@ async def test_search_as_b_does_not_see_a_memories():
             content="tenant A prefers podman",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
         await write_memory(
             content="tenant A uses FastAPI",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     assert len([m for m in store.memories.values() if m.tenant_id == TENANT_A]) == 2
 
@@ -570,6 +574,7 @@ async def test_search_as_a_finds_own_memories():
             content="tenant A own content",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
 
     async def _fake_search(
@@ -670,6 +675,7 @@ async def test_update_as_b_fails_on_tenant_a_memory():
             content="original content",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = write_result["memory"]["id"]
 
@@ -739,6 +745,7 @@ async def test_update_as_same_tenant_succeeds():
             content="original content",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = write_result["memory"]["id"]
 
@@ -843,6 +850,7 @@ async def test_delete_as_b_fails_on_tenant_a_memory():
             content="important data",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = write_result["memory"]["id"]
 
@@ -934,6 +942,7 @@ async def test_get_memory_history_as_b_fails_on_tenant_a_memory():
             content="tenant A initial",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = write_result["memory"]["id"]
 
@@ -1003,6 +1012,7 @@ async def test_get_memory_history_same_tenant_succeeds():
             content="content for history",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = write_result["memory"]["id"]
 
@@ -1083,10 +1093,12 @@ async def test_get_relationships_cross_tenant_returns_not_found():
         ),
     ):
         a1 = await write_memory(
-            content="tenant A source", scope="user", owner_id="user_a"
+            content="tenant A source", scope="user", owner_id="user_a",
+            content_type="experiential",
         )
         a2 = await write_memory(
-            content="tenant A target", scope="user", owner_id="user_a"
+            content="tenant A target", scope="user", owner_id="user_a",
+            content_type="experiential",
         )
 
     src_id = uuid.UUID(a1["memory"]["id"])
@@ -1163,10 +1175,12 @@ async def test_get_relationships_same_tenant_returns_edges():
         ),
     ):
         a1 = await write_memory(
-            content="source node", scope="user", owner_id="user_a"
+            content="source node", scope="user", owner_id="user_a",
+            content_type="experiential",
         )
         a2 = await write_memory(
-            content="target node", scope="user", owner_id="user_a"
+            content="target node", scope="user", owner_id="user_a",
+            content_type="experiential",
         )
     src_id = uuid.UUID(a1["memory"]["id"])
     tgt_id = uuid.UUID(a2["memory"]["id"])
@@ -1284,6 +1298,7 @@ async def test_get_similar_memories_cross_tenant_returns_not_found():
             content="prefers podman over docker",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = a1["memory"]["id"]
 
@@ -1361,11 +1376,13 @@ async def test_get_similar_memories_does_not_see_cross_tenant_candidates():
             content="prefers dark mode",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
         await write_memory(
             content="prefers dark mode in editor",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
 
     # And write one look-alike in tenant B, also under owner "user_a"
@@ -1398,6 +1415,7 @@ async def test_get_similar_memories_does_not_see_cross_tenant_candidates():
             content="prefers dark mode everywhere",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
 
     # Now tenant A queries similar for its first memory. The A store
@@ -1494,6 +1512,7 @@ async def test_report_contradiction_cross_tenant_fails():
             content="tenant A preference",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = write_result["memory"]["id"]
 
@@ -1573,6 +1592,7 @@ async def test_report_contradiction_same_tenant_succeeds():
             content="tenant A preference",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = write_result["memory"]["id"]
 
@@ -1762,6 +1782,7 @@ async def test_cross_tenant_error_does_not_mention_tenant():
             content="sensitive A data",
             scope="user",
             owner_id="user_a",
+            content_type="experiential",
         )
     memory_id = write_result["memory"]["id"]
 

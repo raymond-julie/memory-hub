@@ -77,7 +77,7 @@ async def test_write_memory_content_too_large_raises_tool_error():
             ),
             pytest.raises(ToolError) as exc_info,
         ):
-            await write_memory(content="test", scope="user")
+            await write_memory(content="test", scope="user", content_type="experiential")
     finally:
         auth_mod._current_session = None
 
@@ -112,7 +112,7 @@ async def test_write_memory_service_unavailable_raises_tool_error():
             ),
             pytest.raises(ToolError) as exc_info,
         ):
-            await write_memory(content="test", scope="user")
+            await write_memory(content="test", scope="user", content_type="experiential")
     finally:
         auth_mod._current_session = None
 
