@@ -145,6 +145,14 @@ _PATTERN_BLOCKS: dict[LoadingPattern, str] = {
     "eager": """\
 ## At session start
 
+Check for a `<memoryhub-context>` block in your conversation context.
+If present, the SessionStart hook has pre-loaded project and user
+memories -- use them as your working set. Do NOT call `register_session`
+or `search_memory` yet.
+
+If no `<memoryhub-context>` block is present (hook not configured or
+failed silently), fall back to the manual flow:
+
 1. Read your API key from `~/.config/memoryhub/api-key` (trim whitespace).
 2. Call `register_session(api_key="<key>")` to authenticate.
 3. Immediately call `search_memory(query="", mode="index", max_results=50)`
@@ -163,16 +171,16 @@ _PATTERN_BLOCKS: dict[LoadingPattern, str] = {
     "lazy": """\
 ## At session start
 
-Read your API key from `~/.config/memoryhub/api-key` (trim whitespace)
-and call `register_session(api_key="<key>")` to authenticate. Do NOT
-call `search_memory` yet — your working set is empty until the first user
-turn arrives.
+Check for a `<memoryhub-context>` block in your conversation context.
+If present, the SessionStart hook has pre-loaded project and user
+memories -- use them as your working set. Do NOT call `register_session`
+or `search_memory` yet.
 
-## After the first user turn
-
-Derive a 1-2 sentence summary of the user's intent from the opening
-message. Call `search_memory(query=<summary>)`. Use the returned memories
-as your working set for the session.
+If no `<memoryhub-context>` block is present (hook not configured or
+failed silently), fall back to the manual flow: read your API key from
+`~/.config/memoryhub/api-key` (trim whitespace), call
+`register_session(api_key="<key>")`, then after the first user turn
+derive a 1-2 sentence summary and call `search_memory(query=<summary>)`.
 
 ## During the session
 
@@ -185,26 +193,27 @@ as your working set for the session.
     "lazy_with_rebias": """\
 ## At session start
 
-Read your API key from `~/.config/memoryhub/api-key` (trim whitespace)
-and call `register_session(api_key="<key>")` to authenticate. Do NOT
-call `search_memory` yet.
+Check for a `<memoryhub-context>` block in your conversation context.
+If present, the SessionStart hook has pre-loaded project and user
+memories -- use them as your working set. Do NOT call `register_session`
+or `search_memory` yet.
 
-## After the first user turn
+If no `<memoryhub-context>` block is present (hook not configured or
+failed silently), fall back to the manual flow: read your API key from
+`~/.config/memoryhub/api-key` (trim whitespace), call
+`register_session(api_key="<key>")`, then after the first user turn
+derive a 1-2 sentence summary and call `search_memory(query=<summary>)`.
 
-Derive a 1-2 sentence summary of the user's intent from the opening
-message. Call `search_memory(query=<summary>)`. Use the returned memories
-as your working set for the session.
-
-## During the session — watch for pivots
+## During the session -- watch for pivots
 
 A pivot is any of:
 
-1. **Subsystem change** — the user changes topic to a different area of
+1. **Subsystem change** -- the user changes topic to a different area of
    the project (e.g., from "deployment" to "UI", or from "MCP server" to
    "SDK").
-2. **Unknown concept** — the user references a project-specific term that
+2. **Unknown concept** -- the user references a project-specific term that
    isn't in your working set.
-3. **Explicit switch** — the user says "let's switch to...", "now let's
+3. **Explicit switch** -- the user says "let's switch to...", "now let's
    talk about...", or similar phrasing.
 
 When you detect a pivot, call `search_memory` with a query for the new
@@ -215,9 +224,16 @@ not have to re-search for memories it already saw.
     "jit": """\
 ## At session start
 
-Read your API key from `~/.config/memoryhub/api-key` (trim whitespace)
-and call `register_session(api_key="<key>")` to authenticate. Do NOT
-call `search_memory`. There is no working set in this pattern.
+Check for a `<memoryhub-context>` block in your conversation context.
+If present, the SessionStart hook has pre-loaded project and user
+memories -- use them as initial context. Do NOT call `register_session`
+or `search_memory` yet.
+
+If no `<memoryhub-context>` block is present (hook not configured or
+failed silently), fall back to the manual flow: read your API key from
+`~/.config/memoryhub/api-key` (trim whitespace) and call
+`register_session(api_key="<key>")`. Do NOT call `search_memory` --
+there is no working set in this pattern.
 
 ## During the session
 

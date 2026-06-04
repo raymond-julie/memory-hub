@@ -20,16 +20,16 @@ failed silently), fall back to the manual flow: read your API key from
 `register_session(api_key="<key>")`, then after the first user turn
 derive a 1-2 sentence summary and call `search_memory(query=<summary>)`.
 
-## During the session — watch for pivots
+## During the session -- watch for pivots
 
 A pivot is any of:
 
-1. **Subsystem change** — the user changes topic to a different area of
+1. **Subsystem change** -- the user changes topic to a different area of
    the project (e.g., from "deployment" to "UI", or from "MCP server" to
    "SDK").
-2. **Unknown concept** — the user references a project-specific term that
+2. **Unknown concept** -- the user references a project-specific term that
    isn't in your working set.
-3. **Explicit switch** — the user says "let's switch to...", "now let's
+3. **Explicit switch** -- the user says "let's switch to...", "now let's
    talk about...", or similar phrasing.
 
 When you detect a pivot, call `search_memory` with a query for the new
