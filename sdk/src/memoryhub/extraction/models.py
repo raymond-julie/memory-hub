@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -27,7 +27,7 @@ class TraceEvent(BaseModel):
 
     event_type: TraceEventType
     content: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     tool_name: str | None = None
     tool_args: dict[str, Any] | None = None
     tool_result: Any = None

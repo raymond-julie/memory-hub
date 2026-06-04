@@ -141,7 +141,8 @@ jobs:
         if: github.event_name != 'pull_request' || steps.cli-changes.outputs.cli == 'true'
         run: |
           python -m pip install --upgrade pip
-          cd memoryhub-cli && pip install -e .[dev]
+          cd sdk && pip install -e .
+          cd ../memoryhub-cli && pip install -e .[dev]
 
       - name: Lint with ruff
         if: github.event_name != 'pull_request' || steps.cli-changes.outputs.cli == 'true'
