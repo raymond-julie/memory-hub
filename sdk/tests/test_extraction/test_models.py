@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -79,7 +79,7 @@ def test_trace_event_metadata():
 def test_trace_event_has_timestamp():
     event = TraceEvent.user_message("test")
     assert isinstance(event.timestamp, datetime)
-    assert event.timestamp.tzinfo == UTC
+    assert event.timestamp.tzinfo == timezone.utc
 
 
 # ── CandidateMemory defaults ─────────────────────────────────────────────────

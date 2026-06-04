@@ -349,8 +349,8 @@ def test_config_init_runs_end_to_end_via_cli(tmp_path: Path):
 
     runner = CliRunner()
     # Inputs answer: shape=adaptive(3), pattern=default(3), focus=default(4),
-    # contradictions=default(N).
-    answers = "3\n3\n4\nN\n\n"
+    # contradictions=default(N), campaigns=skip, server URL=skip.
+    answers = "3\n3\n4\nN\n\n\n"
     result = runner.invoke(
         app,
         ["config", "init", "--dir", str(tmp_path)],
