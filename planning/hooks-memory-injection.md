@@ -53,10 +53,28 @@ whenever possible.
 
 ## 3. Claude Code Hook Design
 
-### Hook event
+### Hook dimensions
 
-`SessionStart` with matcher `startup`. Do not match `resume` (previous memories
-are still in the transcript) or `clear`/`compact`.
+Claude Code's hook system has two dimensions:
+
+1. **Hook types** -- lifecycle events the harness fires: `SessionStart`,
+   `PreToolUse`, `PostToolUse`, `Notification`, etc.
+2. **Matchers** -- filters within a hook type that select when to fire.
+
+For `SessionStart`, the available matchers are:
+
+| Matcher | When it fires | Inject memories? | Reason |
+|---------|---------------|------------------|--------|
+| `startup` | New session | Yes | Fresh context, no prior memories |
+| `compact` | Auto or manual context compaction | Yes | Original injection may be summarized away |
+| `clear` | `/clear` command | Yes | Conversation wiped, same as fresh start |
+| `resume` | `--resume`, `--continue`, `/resume` | No | Prior memories still in transcript |
+
+The hook system is extensible. Projects can add hooks for other lifecycle
+events (e.g., an `OnAuthenticate` hook that registers the MemoryHub session
+when MCP auth completes, or a `PostToolUse` hook that auto-saves decisions
+after certain tool calls). The `load-memories.sh` script is the foundation;
+the settings.json wiring determines when it fires.
 
 ### Why command hooks, not MCP tool hooks
 
@@ -65,14 +83,8 @@ finish connecting." A command hook calling the CLI is reliable.
 
 ### Authentication
 
-The SessionStart hook cannot run an interactive OAuth flow. The CLI currently
-requires OAuth credentials (`url`, `auth_url`, `client_id`, `client_secret`).
-This is a blocker.
-
-**Required change:** Add API key authentication to the CLI. The SDK already
-supports `MemoryHubClient(api_key="mh-dev-...")`. The CLI should accept
-`MEMORYHUB_API_KEY` or `--api-key` and use this path. The API key file at
-`~/.config/memoryhub/api-key` already exists per project convention.
+The CLI supports API key auth via `MEMORYHUB_API_KEY` env var or auto-read
+from `~/.config/memoryhub/api-key`. This enables non-interactive use in hooks.
 
 ### Query strategy
 
@@ -128,14 +140,27 @@ a fallback for mid-conversation searches.
     "SessionStart": [
       {
         "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/load-memories.sh",
-            "args": [],
-            "timeout": 5
-          }
-        ]
+        "hooks": [{
+          "type": "command",
+          "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/load-memories.sh",
+          "timeout": 5
+        }]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [{
+          "type": "command",
+          "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/load-memories.sh",
+          "timeout": 5
+        }]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [{
+          "type": "command",
+          "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/load-memories.sh",
+          "timeout": 5
+        }]
       }
     ]
   }
