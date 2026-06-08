@@ -1,6 +1,6 @@
 # Zero-Overhead Memory Injection via Agent Hooks
 
-**Status:** Phase 2 shipped (hook integration)
+**Status:** Phases 1-4 complete; Phase 5 (performance) is future work
 **Date:** June 2026
 **Related issues:** #255, #256, #246, #203
 
@@ -212,23 +212,13 @@ The audit found the CLI is behind the MCP server:
 
 | Operation        | MCP | CLI | SDK |
 |------------------|-----|-----|-----|
-| list             | Yes | No  | Yes |
-| promote          | Yes | No  | Yes |
-| graduate         | Yes | No  | Yes |
-| checkpoint       | Yes | No  | Yes |
-| describe_project | Yes | No  | No  |
+| list             | Yes | Yes | Yes |
+| promote          | Yes | Yes | Yes |
+| graduate         | Yes | Yes | Yes |
+| checkpoint       | Yes | Yes | Yes |
+| describe_project | Yes | Yes | Yes |
 
-Additionally, the CLI only supports OAuth authentication. The SDK supports both
-OAuth and API key. The CLI needs API key support for non-interactive use cases
-like hooks.
-
-**Priority order for catch-up:**
-1. API key auth on CLI (blocks the hook work)
-2. `--compact` output flag (blocks the hook work)
-3. `list` command
-4. `promote` / `graduate` commands
-5. `checkpoint` command
-6. `describe_project` (both CLI and SDK)
+All parity gaps closed as of CLI 0.9.0 / SDK 0.12.0 (2026-06-08, #257).
 
 Going forward, new MCP actions should be accompanied by CLI and SDK equivalents
 in the same PR. This is a same-commit consumer audit rule, matching the pattern

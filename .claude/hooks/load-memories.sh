@@ -22,12 +22,16 @@ fi
 [ -n "${MEMORYHUB_URL:-}" ] || exit 0
 export MEMORYHUB_URL
 
-MEMORYHUB_BIN="${CLAUDE_PROJECT_DIR:-$PWD}/memoryhub-cli/.venv/bin/memoryhub"
-if ! [ -x "$MEMORYHUB_BIN" ]; then
-  MEMORYHUB_BIN=$(command -v memoryhub 2>/dev/null) || exit 0
-fi
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
+MEMORYHUB_BIN=""
+for candidate in \
+  "$PROJECT_ROOT/.venv/bin/memoryhub" \
+  "$PROJECT_ROOT/memoryhub-cli/.venv/bin/memoryhub"; do
+  [ -x "$candidate" ] && MEMORYHUB_BIN="$candidate" && break
+done
+[ -n "$MEMORYHUB_BIN" ] || MEMORYHUB_BIN=$(command -v memoryhub 2>/dev/null) || exit 0
 
-PROJECT_ID=$(basename "${CLAUDE_PROJECT_DIR:-$PWD}")
+PROJECT_ID=$(basename "$PROJECT_ROOT")
 
 "$MEMORYHUB_BIN" search \
   "project context architecture preferences decisions workflow" \

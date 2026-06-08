@@ -17,7 +17,7 @@ class Memory(BaseModel):
     content: str = ""
     stub: str | None = None
     weight: float = 0.7
-    scope: str
+    scope: str = ""
     branch_type: str | None = None
     owner_id: str = ""
     is_current: bool = True
