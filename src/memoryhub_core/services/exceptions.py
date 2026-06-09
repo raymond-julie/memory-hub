@@ -119,6 +119,18 @@ class EmbeddingServiceUnavailableError(EmbeddingServiceError):
         super().__init__(f"Embedding service unavailable: {reason}")
 
 
+class LLMExtractionServiceError(Exception):
+    """Base class for LLM extraction service failures."""
+
+
+class LLMExtractionServiceUnavailableError(LLMExtractionServiceError):
+    """Raised when the LLM extraction service is unreachable or timed out."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"LLM extraction service unavailable: {reason}")
+
+
 class CrossTenantRelationshipError(Exception):
     """Raised when a relationship would span two different tenants.
 

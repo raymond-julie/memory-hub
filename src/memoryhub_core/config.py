@@ -82,3 +82,10 @@ class AppSettings(BaseSettings):
     gliner_confidence_threshold: float = 0.5
     gliner_stage2_trigger_count: int = 2
     gliner_stage2_trigger_confidence: float = 0.8
+
+    # LLM Stage 3 (#249)
+    llm_extraction_url: str = ""
+    llm_extraction_model: str = ""
+    llm_extraction_timeout: int = 60
+    llm_stage3_trigger_count: int = 2
+    llm_stage3_trigger_confidence: float = 0.7
