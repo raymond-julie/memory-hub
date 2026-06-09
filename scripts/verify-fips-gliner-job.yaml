@@ -1,0 +1,110 @@
+# K8s Job to verify GLiNER2 FIPS compatibility (#265).
+#
+# Runs verify-fips-gliner.py inside the MCP server container image,
+# which already has GLiNER and its model baked in at build time.
+#
+# Prerequisites:
+#   - The memory-hub-mcp image must be available in the target namespace
+#     (either via ImageStream or a registry reference).
+#   - The cluster must have FIPS mode enabled at the node level.
+#
+# Usage:
+#   oc apply -f scripts/verify-fips-gliner-job.yaml \
+#     --context <fips-context> -n <namespace>
+#   oc logs job/verify-fips-gliner \
+#     --context <fips-context> -n <namespace> -f
+#   oc delete job verify-fips-gliner \
+#     --context <fips-context> -n <namespace>
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: verify-fips-gliner
+  labels:
+    app: memoryhub
+    component: fips-verification
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: memoryhub
+        component: fips-verification
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: verify
+          image: memory-hub-mcp:latest
+          command:
+            - python
+            - -c
+            - |
+              import os, sys, time, traceback
+
+              def check_fips_mode():
+                  try:
+                      with open("/proc/sys/crypto/fips_enabled") as f:
+                          return f.read().strip() == "1"
+                  except FileNotFoundError:
+                      return False
+
+              fips_active = check_fips_mode()
+              print(f"FIPS mode: {'ACTIVE' if fips_active else 'inactive'}")
+              print(f"Python: {sys.version}")
+              print()
+
+              if not fips_active:
+                  print("ERROR: FIPS mode is NOT active on this node.")
+                  print("This job must run on a FIPS-enabled cluster.")
+                  sys.exit(2)
+
+              model_name = os.environ.get(
+                  "MEMORYHUB_GLINER_MODEL", "urchade/gliner_medium-v2.1"
+              )
+              print(f"Model: {model_name}")
+
+              # Test 1: hashlib wrapper
+              try:
+                  from huggingface_hub.utils import insecure_hashlib
+                  insecure_hashlib.sha256()
+                  print("[PASS] hashlib wrapper: insecure_hashlib present")
+              except Exception as exc:
+                  print(f"[FAIL] hashlib wrapper: {exc}")
+                  sys.exit(1)
+
+              # Test 2: model load
+              try:
+                  from gliner import GLiNER
+                  t0 = time.monotonic()
+                  model = GLiNER.from_pretrained(model_name)
+                  print(f"[PASS] model load: {time.monotonic()-t0:.1f}s")
+              except Exception as exc:
+                  print(f"[FAIL] model load: {exc}")
+                  traceback.print_exc()
+                  sys.exit(1)
+
+              # Test 3: inference
+              try:
+                  labels = ["person", "organization", "location", "technology"]
+                  text = (
+                      "Wes Jackson deployed MemoryHub on Red Hat OpenShift "
+                      "using Python and FastAPI with PostgreSQL."
+                  )
+                  t0 = time.monotonic()
+                  entities = model.predict_entities(text, labels, threshold=0.5)
+                  summary = ", ".join(f"{e['text']}({e['label']})" for e in entities)
+                  print(f"[PASS] inference: {time.monotonic()-t0:.1f}s: {summary or 'none'}")
+              except Exception as exc:
+                  print(f"[FAIL] inference: {exc}")
+                  traceback.print_exc()
+                  sys.exit(1)
+
+              print()
+              print("RESULT: FIPS-VERIFIED -- all checks passed")
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
