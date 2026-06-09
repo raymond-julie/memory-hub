@@ -71,7 +71,7 @@ class TestActionValidation:
         assert "write" in msg
 
     def test_valid_actions_count(self):
-        assert len(_VALID_ACTIONS) == 24
+        assert len(_VALID_ACTIONS) == 28
 
 
 # ── Required param validation ──────────────────────────────────────────────
@@ -185,6 +185,26 @@ class TestRequiredParams:
     async def test_remove_member_requires_user_id(self):
         with pytest.raises(ToolError, match="requires 'user_id' in options"):
             await memory(action="remove_member", project_id="p")
+
+    @pytest.mark.asyncio
+    async def test_merge_entities_requires_source_id(self):
+        with pytest.raises(ToolError, match="requires 'source_id' in options"):
+            await memory(action="merge_entities", options={"target_id": "abc"})
+
+    @pytest.mark.asyncio
+    async def test_merge_entities_requires_target_id(self):
+        with pytest.raises(ToolError, match="requires 'target_id' in options"):
+            await memory(action="merge_entities", options={"source_id": "abc"})
+
+    @pytest.mark.asyncio
+    async def test_rename_entity_requires_memory_id(self):
+        with pytest.raises(ToolError, match="action='rename_entity' requires 'memory_id'"):
+            await memory(action="rename_entity", options={"new_name": "test"})
+
+    @pytest.mark.asyncio
+    async def test_rename_entity_requires_new_name(self):
+        with pytest.raises(ToolError, match="requires 'new_name' in options"):
+            await memory(action="rename_entity", memory_id="abc")
 
 
 # ── Dispatch routing ───────────────────────────────────────────────────────
@@ -401,6 +421,90 @@ class TestDispatchRouting:
         kw = mock_proj.call_args[1]
         assert kw["project_name"] == "explicit"
 
+    @pytest.mark.asyncio
+    @patch("memoryhub_core.services.entity.list_entities", new_callable=AsyncMock)
+    @patch("src.core.authz.get_tenant_filter", return_value="default")
+    @patch("src.core.authz.get_claims_from_context", return_value={"sub": "user-1", "tenant_id": "default", "scopes": ["memory:read"]})
+    @patch("src.tools._deps.release_db_session", new_callable=AsyncMock)
+    @patch("src.tools._deps.get_db_session", new_callable=AsyncMock)
+    async def test_list_entities_dispatches(self, mock_get_db, mock_release_db, mock_claims, mock_tenant, mock_list):
+        mock_session = AsyncMock()
+        mock_get_db.return_value = (mock_session, AsyncMock())
+        mock_list.return_value = {"entities": [], "total": 0, "limit": 50, "offset": 0, "has_more": False}
+
+        result = await memory(
+            action="list_entities",
+            options={"entity_type": "person", "limit": 10},
+        )
+
+        mock_list.assert_called_once()
+        kw = mock_list.call_args[1]
+        assert kw["tenant_id"] == "default"
+        assert kw["owner_id"] == "user-1"
+        assert kw["entity_type"] == "person"
+        assert kw["limit"] == 10
+
+    @pytest.mark.asyncio
+    @patch("memoryhub_core.services.entity.merge_entities", new_callable=AsyncMock)
+    @patch("src.tools._deps.get_embedding_service")
+    @patch("src.core.authz.get_tenant_filter", return_value="default")
+    @patch("src.core.authz.get_claims_from_context", return_value={"sub": "user-1", "tenant_id": "default", "scopes": ["memory:write"]})
+    @patch("src.tools._deps.release_db_session", new_callable=AsyncMock)
+    @patch("src.tools._deps.get_db_session", new_callable=AsyncMock)
+    async def test_merge_entities_dispatches(self, mock_get_db, mock_release_db, mock_claims, mock_tenant, mock_embed, mock_merge):
+        mock_session = AsyncMock()
+        mock_get_db.return_value = (mock_session, AsyncMock())
+        mock_embed.return_value = AsyncMock()
+        mock_merge.return_value = {
+            "surviving_entity": {"id": "12345678-1234-5678-1234-567812345678", "content": "Target", "aliases": []},
+            "reassigned_mentions": 3,
+            "skipped_duplicates": 0,
+            "source_deleted": "87654321-4321-8765-4321-876543218765",
+            "message": "Merged",
+        }
+
+        result = await memory(
+            action="merge_entities",
+            options={
+                "source_id": "87654321-4321-8765-4321-876543218765",
+                "target_id": "12345678-1234-5678-1234-567812345678",
+            },
+        )
+
+        mock_merge.assert_called_once()
+        kw = mock_merge.call_args[1]
+        assert kw["tenant_id"] == "default"
+        assert kw["owner_id"] == "user-1"
+
+    @pytest.mark.asyncio
+    @patch("memoryhub_core.services.entity.rename_entity", new_callable=AsyncMock)
+    @patch("src.tools._deps.get_embedding_service")
+    @patch("src.core.authz.get_tenant_filter", return_value="default")
+    @patch("src.core.authz.get_claims_from_context", return_value={"sub": "user-1", "tenant_id": "default", "scopes": ["memory:write"]})
+    @patch("src.tools._deps.release_db_session", new_callable=AsyncMock)
+    @patch("src.tools._deps.get_db_session", new_callable=AsyncMock)
+    async def test_rename_entity_dispatches(self, mock_get_db, mock_release_db, mock_claims, mock_tenant, mock_embed, mock_rename):
+        mock_session = AsyncMock()
+        mock_get_db.return_value = (mock_session, AsyncMock())
+        mock_embed.return_value = AsyncMock()
+        mock_rename.return_value = {
+            "entity": {"id": "12345678-1234-5678-1234-567812345678", "content": "New Name", "entity_type": "person", "aliases": ["Old Name"], "content_hash": "abc123"},
+            "old_name": "Old Name",
+            "message": "Renamed",
+        }
+
+        result = await memory(
+            action="rename_entity",
+            memory_id="12345678-1234-5678-1234-567812345678",
+            options={"new_name": "New Name"},
+        )
+
+        mock_rename.assert_called_once()
+        kw = mock_rename.call_args[1]
+        assert kw["tenant_id"] == "default"
+        assert kw["owner_id"] == "user-1"
+        assert kw["new_name"] == "New Name"
+
 
 # ── Compact default at dispatcher level (#255) ────────────────────────────
 
@@ -467,3 +571,24 @@ class TestOptionsIsolation:
         kw = mock_read.call_args[1]
         assert "max_results" not in kw
         assert "focus" not in kw
+
+    @pytest.mark.asyncio
+    @patch("memoryhub_core.services.entity.list_entities", new_callable=AsyncMock)
+    @patch("src.core.authz.get_tenant_filter", return_value="default")
+    @patch("src.core.authz.get_claims_from_context", return_value={"sub": "user-1", "tenant_id": "default", "scopes": ["memory:read"]})
+    @patch("src.tools._deps.release_db_session", new_callable=AsyncMock)
+    @patch("src.tools._deps.get_db_session", new_callable=AsyncMock)
+    async def test_search_opts_not_forwarded_to_list_entities(self, mock_get_db, mock_release_db, mock_claims, mock_tenant, mock_list):
+        mock_session = AsyncMock()
+        mock_get_db.return_value = (mock_session, AsyncMock())
+        mock_list.return_value = {"entities": [], "total": 0, "limit": 50, "offset": 0, "has_more": False}
+
+        await memory(
+            action="list_entities",
+            options={"max_results": 5, "focus": "should-be-ignored", "entity_type": "person"},
+        )
+
+        kw = mock_list.call_args[1]
+        assert "max_results" not in kw
+        assert "focus" not in kw
+        assert kw["entity_type"] == "person"

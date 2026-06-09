@@ -29,6 +29,8 @@ _VALID_ACTIONS = frozenset({
     "graduate", "checkpoint",
     # Admin actions
     "backfill_entities",
+    # Entity management
+    "list_entities", "merge_entities", "rename_entity",
 })
 
 # Per-action option keys accepted for forwarding.
@@ -67,6 +69,9 @@ _PROMOTE_OPTS = frozenset({"target_scope", "target_scope_id"})
 _GRADUATE_OPTS = frozenset({"evidence", "reviewer_note"})
 _CHECKPOINT_OPTS = frozenset({"workflow_name", "state", "scope", "scope_id"})
 _BACKFILL_OPTS = frozenset({"limit", "include_failed"})
+_LIST_ENTITIES_OPTS = frozenset({"entity_type", "limit", "offset", "owner_id"})
+_MERGE_ENTITIES_OPTS = frozenset({"source_id", "target_id"})
+_RENAME_ENTITY_OPTS = frozenset({"new_name"})
 
 
 def _require(action: str, name: str, value: Any) -> Any:
@@ -205,6 +210,18 @@ async def memory(
         Durable key-value state for recurring agents. Upsert when state provided,
         read when only workflow_name given.
 
+    Entity management:
+      list_entities([options: entity_type, limit, offset, owner_id])
+        Enumerate extracted entities with MENTIONS relationship counts. Ordered
+        by mentions_count desc. Filter by entity_type (person, object, location,
+        event, organization).
+      merge_entities(options: {source_id, target_id})
+        Merge source entity into target. Reassigns MENTIONS relationships, merges
+        aliases, soft-deletes source. Use when deduplication missed a duplicate.
+      rename_entity(memory_id, options: {new_name})
+        Rename an entity's canonical name. Old name preserved as alias. Fails if
+        new name collides with existing entity; use merge_entities instead.
+
     Admin actions:
       backfill_entities([options: limit, include_failed])
         Run entity extraction on memories without extraction_status. Processes up to
@@ -273,6 +290,15 @@ async def memory(
         return await _dispatch_graduate(memory_id, project_id, opts, ctx)
     if action == "backfill_entities":
         return await _dispatch_backfill_entities(opts, ctx)
+
+    # --- Entity management ---
+    if action == "list_entities":
+        return await _dispatch_list_entities(opts, ctx)
+    if action == "merge_entities":
+        return await _dispatch_merge_entities(opts, ctx)
+    if action == "rename_entity":
+        return await _dispatch_rename_entity(memory_id, opts, ctx)
+
     # checkpoint (last remaining action)
     return await _dispatch_checkpoint(opts, ctx)
 
@@ -523,9 +549,9 @@ async def _dispatch_remove_member(project_id, opts, ctx):
 
 async def _dispatch_checkpoint(opts, ctx):
     """Dispatch checkpoint action (read or upsert)."""
-    from src.tools._deps import get_db_session, get_embedding_service, release_db_session
     from memoryhub_core.services.checkpoint import read_checkpoint, upsert_checkpoint
     from src.core.authz import get_claims_from_context, get_tenant_filter
+    from src.tools._deps import get_db_session, get_embedding_service, release_db_session
 
     _opt_require("checkpoint", "workflow_name", opts)
     workflow_name = opts["workflow_name"]
@@ -576,13 +602,10 @@ async def _dispatch_checkpoint(opts, ctx):
 async def _dispatch_promote(memory_id, project_id, opts, ctx):
     """Dispatch promote action to service layer."""
     import uuid as uuid_module
-    from src.tools._deps import (
-        get_db_session,
-        get_embedding_service,
-        release_db_session,
-    )
-    from src.core.authz import get_claims_from_context, get_tenant_filter
+
     from memoryhub_core.services.promotion import promote_memory
+    from src.core.authz import get_claims_from_context, get_tenant_filter
+    from src.tools._deps import get_db_session, get_embedding_service, release_db_session
 
     _require("promote", "memory_id", memory_id)
     _opt_require("promote", "target_scope", opts)
@@ -614,7 +637,11 @@ async def _dispatch_promote(memory_id, project_id, opts, ctx):
                 "metadata": promoted.metadata,
                 "created_at": promoted.created_at.isoformat(),
             },
-            "message": f"Memory promoted from '{promoted.metadata.get('promoted_from', {}).get('source_id', 'unknown')}' to {promoted.scope} scope",
+            "message": (
+                f"Memory promoted from "
+                f"'{promoted.metadata.get('promoted_from', {}).get('source_id', 'unknown')}' "
+                f"to {promoted.scope} scope"
+            ),
         }
     finally:
         await release_db_session(gen)
@@ -623,13 +650,10 @@ async def _dispatch_promote(memory_id, project_id, opts, ctx):
 async def _dispatch_graduate(memory_id, project_id, opts, ctx):
     """Dispatch graduate action to service layer."""
     import uuid as uuid_module
-    from src.tools._deps import (
-        get_db_session,
-        get_embedding_service,
-        release_db_session,
-    )
-    from src.core.authz import get_claims_from_context, get_tenant_filter
+
     from memoryhub_core.services.graduation import graduate_memory
+    from src.core.authz import get_claims_from_context, get_tenant_filter
+    from src.tools._deps import get_db_session, get_embedding_service, release_db_session
 
     _require("graduate", "memory_id", memory_id)
 
@@ -676,3 +700,95 @@ async def _dispatch_backfill_entities(opts, ctx):
     if "include_failed" in kwargs:
         kwargs["include_failed"] = bool(kwargs["include_failed"])
     return await backfill_entities(**kwargs)
+
+
+# ── Entity management dispatchers ────────────────────────────────────────────
+
+async def _dispatch_list_entities(opts, ctx):
+    """Dispatch list_entities action."""
+    from memoryhub_core.services.entity import list_entities
+    from src.core.authz import get_claims_from_context, get_tenant_filter
+    from src.tools._deps import get_db_session, release_db_session
+
+    claims = get_claims_from_context()
+    tenant_id = get_tenant_filter(claims)
+    owner_id = opts.get("owner_id") or claims["sub"]
+
+    kwargs = {}
+    if "entity_type" in opts:
+        kwargs["entity_type"] = opts["entity_type"]
+    if "limit" in opts:
+        kwargs["limit"] = int(opts["limit"])
+    if "offset" in opts:
+        kwargs["offset"] = int(opts["offset"])
+
+    session, gen = await get_db_session()
+    try:
+        return await list_entities(
+            session,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+            **kwargs,
+        )
+    finally:
+        await release_db_session(gen)
+
+
+async def _dispatch_merge_entities(opts, ctx):
+    """Dispatch merge_entities action."""
+    import uuid as uuid_module
+
+    from memoryhub_core.services.entity import merge_entities
+    from src.core.authz import get_claims_from_context, get_tenant_filter
+    from src.tools._deps import get_db_session, get_embedding_service, release_db_session
+
+    _opt_require("merge_entities", "source_id", opts)
+    _opt_require("merge_entities", "target_id", opts)
+
+    claims = get_claims_from_context()
+    tenant_id = get_tenant_filter(claims)
+    owner_id = claims["sub"]
+
+    session, gen = await get_db_session()
+    try:
+        embedding_service = get_embedding_service()
+        return await merge_entities(
+            source_id=uuid_module.UUID(opts["source_id"]),
+            target_id=uuid_module.UUID(opts["target_id"]),
+            session=session,
+            embedding_service=embedding_service,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+        )
+    finally:
+        await release_db_session(gen)
+
+
+async def _dispatch_rename_entity(memory_id, opts, ctx):
+    """Dispatch rename_entity action."""
+    import uuid as uuid_module
+
+    from memoryhub_core.services.entity import rename_entity
+    from src.core.authz import get_claims_from_context, get_tenant_filter
+    from src.tools._deps import get_db_session, get_embedding_service, release_db_session
+
+    _require("rename_entity", "memory_id", memory_id)
+    _opt_require("rename_entity", "new_name", opts)
+
+    claims = get_claims_from_context()
+    tenant_id = get_tenant_filter(claims)
+    owner_id = claims["sub"]
+
+    session, gen = await get_db_session()
+    try:
+        embedding_service = get_embedding_service()
+        return await rename_entity(
+            entity_id=uuid_module.UUID(memory_id),
+            new_name=opts["new_name"],
+            session=session,
+            embedding_service=embedding_service,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+        )
+    finally:
+        await release_db_session(gen)
