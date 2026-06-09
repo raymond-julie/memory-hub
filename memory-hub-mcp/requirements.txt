@@ -15,3 +15,4 @@ minio
 psycopg2-binary
 httpx
 spacy>=3.7
+gliner>=0.2.7

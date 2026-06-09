@@ -21,6 +21,7 @@ dependencies = [
     "httpx",
     "psycopg2-binary",
     "spacy>=3.7",
+    "gliner>=0.2.7",
 ]
 
 [project.optional-dependencies]

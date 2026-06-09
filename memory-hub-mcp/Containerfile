@@ -15,8 +15,9 @@ RUN pip install --no-cache-dir --upgrade wheel setuptools && \
 COPY memoryhub_core/ ./memoryhub_core/
 RUN pip install --no-cache-dir --no-build-isolation -e ./memoryhub_core/
 
-# Download spaCy model at build time (12MB, air-gap safe)
+# Download NLP models at build time (air-gap safe)
 RUN python -m spacy download en_core_web_sm
+RUN python -c "from gliner import GLiNER; GLiNER.from_pretrained('urchade/gliner_medium-v2.1')"
 
 # Copy MCP server application code
 COPY src/ ./src/
