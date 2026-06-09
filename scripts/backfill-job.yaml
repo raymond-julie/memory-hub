@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backfill-entities
+  namespace: memory-hub-mcp
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: backfill
+          image: image-registry.openshift-image-registry.svc:5000/memory-hub-mcp/memory-hub-mcp:latest
+          command: ["python", "/tmp/backfill-entities.py"]
+          args: ["--execute", "--limit", "5", "--verbose", "--concurrency", "1"]
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          envFrom:
+            - secretRef:
+                name: memoryhub-db-credentials
+          env:
+            - name: MEMORYHUB_LLM_EXTRACTION_URL
+              value: http://gpt-oss-20b.gpt-oss-model.svc.cluster.local
+            - name: MEMORYHUB_LLM_EXTRACTION_MODEL
+              value: RedHatAI/gpt-oss-20b
+          volumeMounts:
+            - name: script
+              mountPath: /tmp/backfill-entities.py
+              subPath: backfill-entities.py
+      volumes:
+        - name: script
+          configMap:
+            name: backfill-script
