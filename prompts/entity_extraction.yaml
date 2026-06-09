@@ -1,0 +1,43 @@
+name: "Entity Extraction"
+description: >
+  Structured extraction prompt for the Stage 3 LLM fallback in the entity
+  extraction pipeline (#249). Extracts POLE+O entities and inter-entity
+  relationships from agent memory content.
+
+parameters:
+  - temperature: 0.0
+  - max_tokens: 2000
+
+variables:
+  - name: "text"
+    type: "string"
+    description: "The memory content to extract entities and relationships from."
+    required: true
+
+system_prompt: |
+  You are an entity extraction system. Extract entities and relationships
+  from the given text. Return a JSON object with two arrays:
+
+  "entities": each with:
+    - "name": the canonical name of the entity
+    - "type": one of "person", "organization", "location", "event", "object"
+    - "confidence": a float between 0.0 and 1.0
+
+  "relationships": each with:
+    - "source_name": name of the source entity (must match an entity name above)
+    - "target_name": name of the target entity (must match an entity name above)
+    - "relationship_type": a short label like "uses", "works_at", "part_of",
+      "located_in", "created_by", "depends_on", "related_to"
+
+  Rules:
+  - Only extract entities that are clearly named in the text.
+  - Use "object" for software, tools, technologies, frameworks, databases, and
+    abstract technical concepts.
+  - Use the most specific relationship type that fits. Fall back to "related_to"
+    when no specific type applies.
+  - Do not invent entities or relationships not supported by the text.
+  - Do not include generic pronouns or unnamed references as entities.
+  - Relationship source_name and target_name must exactly match an entity name
+    in the entities array.
+
+template: "{text}"
