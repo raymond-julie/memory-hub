@@ -67,6 +67,8 @@ class MemoryNodeCreate(BaseModel):
     scope: MemoryScope
     weight: float = Field(default=0.7, ge=0.0, le=1.0, description="Injection priority (0.0-1.0)")
     owner_id: str = Field(min_length=1, description="Owning user, project, or org identifier")
+    actor_id: str | None = Field(default=None, description="Authenticated principal who performed the operation")
+    driver_id: str | None = Field(default=None, description="Upstream user or agent on whose behalf the action was taken")
     scope_id: str | None = Field(default=None, description="Project ID or role name for project/role-scoped memories")
     parent_id: uuid.UUID | None = Field(default=None, description="Parent node for branch creation")
     branch_type: str | None = Field(
@@ -114,6 +116,8 @@ class MemoryNodeRead(BaseModel):
     scope: MemoryScope
     branch_type: str | None
     owner_id: str
+    actor_id: str | None = None
+    driver_id: str | None = None
     # Required field. Phase 3 (#46) wires tenant_id through every
     # service-layer write path, so every MemoryNodeRead constructed from an
     # ORM row now carries the real tenant. A missing tenant_id here is a

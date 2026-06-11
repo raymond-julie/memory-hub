@@ -438,7 +438,7 @@ Tested 2026-06-09 on the mcp-rhoai cluster with three memories of varying entity
 
 3. ~~**MENTIONS relationship directionality**~~: **Resolved (PR #244).** Confirmed as `source=memory, target=entity` (memory mentions entity). The entity-aware search subquery joins `memory_relationships.source_id` to find memories mentioning an entity, which aligns with this direction.
 
-4. **GLiNER2 and FIPS**: GLiNER2 uses transformer model weights loaded at runtime. Verify this is compatible with the FIPS-mode Python environment (no MD5/SHA1 in the crypto path; model loading uses standard file I/O, not cryptographic operations). Likely fine, but requires explicit verification in the FIPS environment.
+4. **GLiNER2 and FIPS**: Static analysis (#265, 2026-06-09) found the inference hot path (model deserialization via safetensors/PyTorch, `predict_entities`) uses no cryptographic functions. `huggingface_hub` has one raw `hashlib.sha1()` call in `_local_folder.py:_short_hash()` without `usedforsecurity=False`, but it only fires during active model downloads, not when loading from cache. Since the Containerfile downloads the model at build time (non-FIPS), the runtime path is clean. Runtime verification pending FIPS cluster availability; scripts at `scripts/verify-fips-gliner.py` and `scripts/verify-fips-gliner-job.yaml`.
 
 5. ~~**Invalidation API surface**~~: **Resolved (PR #243).** `invalidate_relationship` is internal-only. Not exposed as an MCP tool. Agents cannot call it directly; it is invoked by the system when temporal edges are superseded. Promotion to a tool deferred to a follow-on issue if demand emerges.
 

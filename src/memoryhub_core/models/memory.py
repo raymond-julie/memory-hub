@@ -54,6 +54,8 @@ class MemoryNode(TimestampMixin, Base):
     scope: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     branch_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     owner_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    actor_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    driver_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     tenant_id: Mapped[str] = mapped_column(
         String(255),
         nullable=False,

@@ -34,6 +34,8 @@ CREATE TABLE conversation_threads (
     scope           VARCHAR(20)  NOT NULL,          -- user | project | campaign | role | organizational | enterprise
     scope_id        VARCHAR(255),                   -- project_id or role_name, NULL for other scopes
     owner_id        VARCHAR(255) NOT NULL,          -- creating user/agent
+    actor_id        VARCHAR(255),                   -- #65 authenticated principal who created the thread
+    driver_id       VARCHAR(255),                   -- #65 upstream user/agent on whose behalf
     tenant_id       VARCHAR(255) NOT NULL DEFAULT 'default',
 
     -- Participants (agent and user identities present in this thread)
@@ -373,13 +375,13 @@ The receiving agent (Agent B) uses `get_thread` to load history. What the receiv
 
 ### Thread Identity vs. Transport Session
 
-MCP transport sessions (`streamable-http` session IDs allocated by FastMCP) are transport convenience, not persistent identifiers. Issue #86 addresses making the application-level session ID durable across transport reconnections (persisted to Valkey).
+MCP transport sessions (`streamable-http` session IDs allocated by FastMCP) are transport convenience, not persistent identifiers. Issue #86 (landed) established per-conversation session IDs as server-minted UUIDs; issue #104 addresses making these durable across transport reconnections (persisted to Valkey).
 
 Conversation threads are a layer above transport sessions. A single transport reconnection should not create a new thread. The mapping is:
 
 ```
 MCP transport session  →  ephemeral (lifetime of one HTTP connection)
-Application session    →  durable across reconnections (issue #86)
+Application session    →  durable across reconnections (issue #86, landed; #104 for Valkey persistence)
 Conversation thread    →  durable across sessions (this feature)
 ```
 
@@ -389,7 +391,7 @@ The `thread_id` is durable across MCP pod restarts. The Valkey-backed applicatio
 
 ### Relationship to Issue #86
 
-Issue #86's per-conversation session ID is the transport-level complement to `thread_id`. `thread_id` is the stable application-level identity (a database row that survives reconnections, pod restarts, and agent handoffs); the session ID in #86 is a transport-level claim that ties a reconnecting client back to its prior application session without a fresh `register_session` round-trip. When #86 lands, the application session will carry a `thread_id` claim so agents need not track it client-side. Until #86 ships, agents are responsible for persisting `thread_id` themselves.
+Issue #86 (landed) established per-conversation session IDs as server-minted UUIDs, decoupling session identity from user identity (JWT sub claim). `thread_id` is the stable application-level identity (a database row that survives reconnections, pod restarts, and agent handoffs); the session_id from #86 is the per-connection identifier that ties a client to its push subscriber and broadcast exclusion. When #104 lands (Valkey persistence for session state), session_id will survive transport reconnections. The application session will carry a `thread_id` so agents need not track it client-side.
 
 ---
 
@@ -413,7 +415,7 @@ Issue #169 (dual-track storage for context compaction) stores compacted conversa
 
 ## Migration
 
-Migration `013_add_conversation_threads.py` creates three tables in order:
+Migration `020_add_conversation_threads.py` creates three tables in order:
 
 1. `conversation_threads` — no FK dependencies outside this feature
 2. `conversation_messages` — FK to `conversation_threads`
@@ -423,7 +425,7 @@ All three tables are created in a single migration to keep the schema consistent
 
 No changes to existing tables. No backfill is required: existing memory nodes have no conversation provenance, and their `conversation_extractions` count is zero by definition.
 
-After `013`, the `RelationshipType` enum in `schemas.py` does not need a new value. The extraction provenance link is stored in `conversation_extractions`, not in `memory_relationships`. This keeps `memory_relationships` clean and avoids the problem of FK constraints on `memory_relationships` pointing at a non-`memory_nodes` target.
+After `020`, the `RelationshipType` enum in `schemas.py` does not need a new value. The extraction provenance link is stored in `conversation_extractions`, not in `memory_relationships`. This keeps `memory_relationships` clean and avoids the problem of FK constraints on `memory_relationships` pointing at a non-`memory_nodes` target.
 
 ---
 
@@ -433,7 +435,8 @@ This feature depends on:
 - PostgreSQL + pgvector (existing)
 - MinIO/S3 (existing, used for large message payloads)
 - The S3 decoupling completed in `9ad20ba`/`efe1df9` (structured error path on S3 unavailability)
-- Issue #86 (per-conversation session ID) for clean client-side thread identity — this feature can ship before #86, but the SDK `resume_thread` helper requires #86 to be self-contained
+- Issue #86 (per-conversation session ID — landed) for clean client-side thread identity
+- Issue #65 (actor_id/driver_id columns — landed) for identity model on thread and message entities
 
 Features that depend on this:
 - Issue #169 (context compaction) references `conversation_threads` as the anchor for compaction cursors
