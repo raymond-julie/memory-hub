@@ -47,8 +47,9 @@ CREATE TABLE conversation_threads (
     deleted_at      TIMESTAMPTZ,
     expires_at      TIMESTAMPTZ,                    -- NULL = no retention expiry set
 
-    -- Retention policy reference (FK to retention_policies if/when that table exists; JSON inline for now)
+    -- Retention policy (resolved from scope/tenant hierarchy at creation time)
     retention_policy JSONB,
+    legal_hold      BOOLEAN NOT NULL DEFAULT FALSE, -- blocks hard-delete when true (except spill response)
 
     -- Extraction state
     last_extracted_at TIMESTAMPTZ,                  -- timestamp of most recent extraction run
@@ -157,111 +158,33 @@ The existing `branch_type` column on `memory_nodes` does not change. Extraction 
 
 ---
 
-## MCP Tools
+## MCP Tool Surface
 
-All tools inherit MemoryHub's existing authorization flow: `get_claims_from_context()` resolves identity, and scope/tenant checks enforce isolation. Tools that operate on a specific thread verify that the caller's `tenant_id` matches the thread's `tenant_id` before evaluating any other predicate.
+Thread operations are exposed as a single `thread(action=...)` tool following the `manage_session(action=...)` / `manage_project(action=...)` pattern. This adds one MCP tool to the server, not seven. The action-dispatch design keeps the tool list compact while giving the async extraction agent granular access to all operations.
 
-### `create_thread`
+All actions inherit MemoryHub's existing authorization flow: `get_claims_from_context()` resolves identity, and scope/tenant checks enforce isolation. Actions that operate on a specific thread verify that the caller's `tenant_id` matches the thread's `tenant_id` before evaluating any other predicate.
 
-Create a new conversation thread.
+### Actions
 
-Input:
-- `scope` (required) — one of the `MemoryScope` values
-- `scope_id` (optional) — project or role identifier for project/role-scoped threads
-- `title` (optional) — human-readable label
-- `participant_ids` (optional, list) — additional agent/user identities sharing this thread
-- `a2a_context_id` (optional) — A2A contextId to associate with this thread
-- `retention_days` (optional) — thread expires after N days; NULL means no automatic expiry
-- `metadata` (optional) — arbitrary key-value pairs
+| Action | Required params | Optional params | Description |
+|--------|----------------|-----------------|-------------|
+| `create` | scope | scope_id, title, participant_ids, a2a_context_id, metadata | Create a new thread. Retention policy inherited from scope/tenant. |
+| `append` | thread_id, role, content | actor_id, tool_call_id, metadata | Append a message. turn number auto-incremented. S3-routed if content > 8 KB. |
+| `get` | thread_id | limit (50), before_sequence, include_tool_messages (true) | Retrieve thread metadata + paginated messages. |
+| `list` | | scope, scope_id, status (active), participant_id, limit (20), offset | List threads visible to caller. |
+| `share` | thread_id, grantee_id, access_level | authorized_by | Grant read or read-write access. |
+| `archive` | thread_id | reason | Set status to archived. Immutable thereafter. |
+| `fork` | thread_id, from_sequence | title | Create a divergent copy from a fork point. |
+| `extract` | thread_id | turn_range, method, model | Trigger extraction pipeline. Async by default. |
 
-Output: thread ID, created timestamp.
+### Authorization
 
-Authorization: caller must have write access to the specified scope. Tenant is inferred from the caller's JWT/session claims; caller cannot specify a different tenant.
-
-### `append_message`
-
-Append one message to an existing thread.
-
-Input:
-- `thread_id` (required)
-- `role` (required) — `user | assistant | tool_call | tool_result | system`
-- `content` (required) — message body; the server routes to S3 if content exceeds 8 KB
-- `actor_id` (optional) — identity of the producing agent or user
-- `tool_call_id` (optional) — correlates `tool_call` and `tool_result` pairs
-- `metadata` (optional)
-
-Output: message ID, sequence number, storage type.
-
-Authorization: caller must be the thread owner, a listed participant, or have the `threads:write` RBAC permission on the thread's scope. A `status = 'archived'` thread rejects appends.
-
-### `get_thread`
-
-Retrieve thread metadata and a window of messages.
-
-Input:
-- `thread_id` (required)
-- `limit` (optional, default 50) — number of messages to return
-- `before_sequence` (optional) — return messages with sequence_number < N (pagination)
-- `include_tool_messages` (optional, default true) — omit `tool_call`/`tool_result` for summarized views
-
-Output: thread metadata, messages list (in sequence order), has_more flag.
-
-Authorization: caller must match `tenant_id` and must be the thread owner, a participant, or have `threads:read` on the scope.
-
-### `list_threads`
-
-List threads visible to the caller.
-
-Input:
-- `scope` (optional) — filter by scope
-- `scope_id` (optional) — filter by project or role
-- `status` (optional, default `active`) — `active | archived | all`
-- `participant_id` (optional) — filter to threads where this identity is a participant
-- `limit` (optional, default 20, max 100)
-- `offset` (optional)
-
-Output: list of thread summaries (id, title, scope, status, message count, last message timestamp, extraction cursor).
-
-Authorization: returns only threads matching the caller's `tenant_id`. Cross-scope visibility follows the caller's RBAC permissions.
-
-### `share_thread`
-
-Grant another agent or user read (or read-write) access to a thread.
-
-Input:
-- `thread_id` (required)
-- `grantee_id` (required) — identity to grant access to
-- `access_level` (required) — `read | write`
-- `authorized_by` (optional) — identity authorizing the grant; defaults to the caller
-
-Output: updated participant list.
-
-Authorization: caller must be the thread owner or have `threads:admin` on the scope.
-
-### `archive_thread`
-
-Move a thread to `archived` status. Archived threads are readable but immutable.
-
-Input:
-- `thread_id` (required)
-- `reason` (optional)
-
-Output: thread ID, archived_at timestamp.
-
-Authorization: caller must be the thread owner or have `threads:admin` on the scope. Archive is reversible only by a caller with `threads:admin`.
-
-### `fork_thread`
-
-Create a divergent copy of a thread starting from a specific sequence number.
-
-Input:
-- `thread_id` (required) — source thread
-- `from_sequence` (required) — fork point; the new thread includes messages with sequence_number <= N
-- `title` (optional) — title for the forked thread
-
-Output: new thread ID, message count copied.
-
-Authorization: caller must have `threads:read` on the source thread. The fork inherits the source thread's `scope` and `tenant_id`. The caller becomes the owner of the fork.
+- `create` — caller must have write access to the specified scope.
+- `append` — caller must be thread owner, listed participant, or hold `threads:write` on the scope. Archived threads reject appends.
+- `get` / `list` — caller must match `tenant_id` and be owner, participant, or hold `threads:read` on the scope.
+- `share` — caller must be thread owner or hold `threads:admin` on the scope.
+- `archive` / `fork` — caller must be thread owner or hold `threads:admin`.
+- `extract` — caller must have `threads:read` on the thread.
 
 ---
 
@@ -277,13 +200,32 @@ For latency-sensitive use cases, `create_thread` accepts an `extraction_mode: sy
 
 The default window is a sliding window of 4 messages (2 full turns), matching Zep's Graphiti architecture. This provides enough context for entity and relationship inference without requiring the full thread history per extraction call.
 
-Three modes are supported:
+All three modes ship at launch:
 
 - `per_turn` (default) — extract after each assistant turn. Balances freshness and cost.
 - `per_session` — extract once at thread archive or explicit trigger. Lowest cost; delayed availability.
 - `per_message` — extract after every append. Highest cost; use only for real-time pipelines.
 
 The mode is configured at thread creation and stored in `retention_policy` JSON.
+
+### Extraction Model Selection
+
+The extraction LLM can differ from the model driving the agent's main conversation. This is configured via environment variables with per-request override support:
+
+- `MH_EXTRACTION_MODEL` — default model for extraction (e.g., `claude-haiku-4-5`). Falls back to the deployment's default LLM if not set.
+- `MH_EXTRACTION_MODEL_URL` — endpoint URL if the extraction model is hosted separately from the main LLM.
+- The `extract` action accepts an optional `model` parameter for per-request override, allowing callers to use a more capable model for complex extractions.
+
+The extraction prompt is loaded from `prompts/extraction.yaml` and is configurable without a code change.
+
+### Extraction Failure Handling
+
+Failed extraction windows (LLM error, timeout) do not advance `extraction_cursor`. The retry strategy:
+
+1. Immediate retry (once).
+2. Exponential backoff: 30s, 60s, 120s.
+3. After 3 total failures, the window is written to a `conversation_extraction_failures` log table with the error details.
+4. The cursor advances past the failed window to avoid blocking subsequent extractions. The failed window can be manually re-triggered via `extract` with an explicit `turn_range`.
 
 ### Pipeline Steps
 
@@ -326,30 +268,86 @@ The thread owner always has `threads:admin`. Listed `participant_ids` have `thre
 
 RBAC is enforced in the tool handlers using the same `get_claims_from_context()` path as memory operations. No separate RBAC table is introduced in this iteration; participant grants are stored in the `participant_ids` array plus a `participant_access` JSONB column (map of identity to access level) added to `conversation_threads`.
 
-### Retention Policies
+### Retention Policy Model
 
-Each thread's `retention_policy` JSONB column stores the policy that governs it:
+Retention is resolved by inheriting from the most specific applicable policy. The most restrictive policy wins at each level.
+
+**Policy resolution order** (first match wins):
+1. Thread-level override (if set on the thread itself)
+2. Scope-level policy (e.g., "all project-scoped threads in project X")
+3. Tenant-level default (configurable via admin API)
+4. System default (90 days for user-scoped, 365 days for project-scoped)
+
+New threads inherit their retention policy from their scope at creation time. The resolved policy is stored in the thread's `retention_policy` JSONB column for auditability and offline enforcement:
 
 ```json
 {
   "ttl_days": 90,
-  "archive_on_expiry": false,
-  "cascade_to_memories": "keep"
+  "cascade_to_memories": "delete",
+  "min_retention_days": 30,
+  "inherited_from": "scope:project:infrastructure"
 }
 ```
 
-`cascade_to_memories` controls what happens to extracted memories when a thread expires:
-- `keep` (default) — extracted memories survive; their `conversation_extractions` records are soft-deleted so the provenance link is no longer queryable but the memory is not affected
-- `anonymize` — extracted memories survive; their `conversation_extractions` records are deleted and the memories' `owner_id` is replaced with a sentinel value indicating the source is no longer available
-- `delete` — extracted memories are also soft-deleted if they have no other provenance source (i.e., `conversation_extractions` count = 1)
+**`cascade_to_memories`** controls what happens to extracted memories when a thread is deleted:
+- `delete` (default) — extracted memories are soft-deleted if they have no other provenance source (i.e., `conversation_extractions` count = 1). This is the safest default for data minimization.
+- `orphan` — extracted memories survive; their `conversation_extractions` records are soft-deleted so the provenance link is severed but the memory is retained.
+- `preserve` — everything kept unchanged. Used under regulatory hold or when memories have independent value.
 
-A background retention job runs daily. It queries `conversation_threads WHERE expires_at <= now() AND status = 'active'` and applies the policy. The job is idempotent: processing an already-expired thread is a no-op.
+**`min_retention_days`** sets a floor on how long soft-deleted data must be retained before hard deletion. This supports corporate policies that require deleted data to remain recoverable for a minimum period (e.g., 30 days). The retention sweep will not hard-delete data until `deleted_at + min_retention_days` has passed.
 
-### Archive vs. Delete Semantics
+A background retention job (Kubernetes CronJob) runs daily and is idempotent. It handles two phases:
+1. **Soft-delete phase:** Find threads where `expires_at <= now() AND status = 'active'`, soft-delete them and cascade per policy.
+2. **Hard-delete phase:** Find threads where `deleted_at + min_retention_days <= now() AND status = 'deleted'`, hard-delete rows (unless under legal hold).
 
-`archived` threads are immutable and readable. They are not subject to retention-based deletion unless the policy explicitly sets `purge_archived: true`. Archive is the appropriate disposition for completed conversations that must remain available for audit.
+### Legal Hold
 
-`deleted` (soft-deleted) threads set `deleted_at` and `status = 'deleted'`. All tool queries filter these out. Hard deletion (removing rows) is performed only by the GDPR right-to-erasure process, which requires an operator-level invocation.
+A `legal_hold` flag on `conversation_threads` (and the tenant-level policy) blocks all deletion operations:
+
+- When a legal hold is active on a thread, soft-delete is allowed but hard-delete is blocked. The thread transitions to `status = 'pending_deletion'` and waits for the hold to be lifted.
+- When a legal hold is active at the tenant level, no threads in that tenant can be hard-deleted.
+- Lifting a legal hold triggers the retention sweep to process any `pending_deletion` threads.
+- Only `threads:admin` or higher can set/clear legal holds.
+
+Legal hold does NOT block spill response (see Deletion Hierarchy below).
+
+### Deletion Hierarchy
+
+Four deletion levels, escalating in severity and authorization requirements:
+
+| Level | Trigger | Respects holds? | Cascade | Audit record | Authorization |
+|-------|---------|-----------------|---------|-------------|---------------|
+| **Soft delete** | Agent, retention sweep | Yes | Per policy (default: `delete`) | Full audit entry | Thread owner or `threads:admin` |
+| **Admin purge** | Operator | Overrides with justification | Hard-deletes thread + messages + extractions + cascade memories | Full audit entry with justification | `memory:admin` |
+| **Spill response** | IA staff | Bypasses all holds | Atomic hard-delete: all content, embeddings, S3 objects | Tombstone only (ID + timestamp + actor + incident ref, no content) | `memory:admin:spill` |
+| **Silent spill** | IA staff | Bypasses all holds | Same as spill response | No record created | `memory:admin:spill` + `memory:admin:silent` |
+
+Spill response uses the admin hard-delete infrastructure designed in `docs/admin/content-moderation.md`. Thread-level spill response extends that design to cover `conversation_threads`, `conversation_messages`, `conversation_extractions`, and any S3 objects referenced by `content_ref`. All deletions happen in a single transaction.
+
+The tombstone table (`purge_log`) records content-free deletion events:
+
+```sql
+CREATE TABLE purge_log (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    resource_type   VARCHAR(50)  NOT NULL,  -- 'thread', 'memory', 'message'
+    resource_id     UUID         NOT NULL,
+    purged_by       VARCHAR(255) NOT NULL,
+    purged_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    reason          VARCHAR(20)  NOT NULL,  -- 'retention', 'admin', 'gdpr', 'spill'
+    incident_ref    VARCHAR(255)            -- external incident tracking ID
+);
+```
+
+When `leave_tombstone=false` (silent spill), not even this record is created. The data ceases to exist with no forensic trace. This capability exists for classified environments where the existence of deleted data is itself sensitive.
+
+### Thread Status Lifecycle
+
+```
+active → archived (immutable, readable, not subject to retention unless purge_archived=true)
+active → deleted (soft-deleted, invisible to queries, subject to min_retention_days before hard-delete)
+active → pending_deletion (deletion requested but legal hold active; processed when hold lifts)
+deleted → (hard-deleted) (after min_retention_days, rows physically removed)
+```
 
 ---
 
@@ -415,17 +413,20 @@ Issue #169 (dual-track storage for context compaction) stores compacted conversa
 
 ## Migration
 
-Migration `020_add_conversation_threads.py` creates three tables in order:
+Migration `020_add_conversation_threads.py` creates four tables in order:
 
 1. `conversation_threads` — no FK dependencies outside this feature
 2. `conversation_messages` — FK to `conversation_threads`
 3. `conversation_extractions` — FK to `memory_nodes` and `conversation_threads`
+4. `purge_log` — no FK dependencies (content-free deletion audit trail)
 
-All three tables are created in a single migration to keep the schema consistent. The migration is reversible: `downgrade()` drops the tables in reverse order.
+All four tables are created in a single migration to keep the schema consistent. The migration is reversible: `downgrade()` drops the tables in reverse order.
 
 No changes to existing tables. No backfill is required: existing memory nodes have no conversation provenance, and their `conversation_extractions` count is zero by definition.
 
 After `020`, the `RelationshipType` enum in `schemas.py` does not need a new value. The extraction provenance link is stored in `conversation_extractions`, not in `memory_relationships`. This keeps `memory_relationships` clean and avoids the problem of FK constraints on `memory_relationships` pointing at a non-`memory_nodes` target.
+
+Note: `purge_log` is placed in the conversation-threads migration for convenience but is a general-purpose table that also covers memory node purges. It has no FK dependencies on any other table by design (the referenced resources have been deleted by the time the log entry is written).
 
 ---
 
@@ -445,16 +446,22 @@ Features that depend on this:
 
 ---
 
+## Resolved Decisions
+
+**Extraction LLM selection.** Resolved: configurable via `MH_EXTRACTION_MODEL` and `MH_EXTRACTION_MODEL_URL` environment variables. Per-request override via the `extract` action's `model` parameter. Default prompt in `prompts/extraction.yaml`.
+
+**Retention policy inheritance.** Resolved: scope-level inheritance. New threads inherit retention policy from their scope at creation time. Resolution order: thread override > scope policy > tenant default > system default.
+
+**Extraction modes.** Resolved: all three modes (`per_turn`, `per_session`, `per_message`) ship at launch.
+
+**Cascade default.** Resolved: `delete` (soft-delete extracted memories if no other provenance source). Configurable per policy.
+
+**Extraction failure handling.** Resolved: exponential backoff (30s, 60s, 120s), max 3 retries. Failed windows logged to `conversation_extraction_failures` table. Cursor advances past failed window; manual re-trigger via `extract` with explicit `turn_range`.
+
+**Hard deletion.** Resolved: four-level deletion hierarchy (soft delete, admin purge, spill response, silent spill). Extends existing `docs/admin/content-moderation.md` design. Tombstone table (`purge_log`) for audit. Silent spill leaves no forensic trace for classified environments.
+
 ## Open Questions
 
-**Extraction LLM selection.** The extraction pipeline needs an LLM to identify discrete facts from a message window. Which model and prompt are used is a deployment concern, not a schema concern, but the pipeline must be configurable without a code change. Resolution: make the model and prompt path configurable via environment variables; provide a default prompt in `prompts/extraction.yaml`.
-
-**Retention policy inheritance.** Should scope-level retention policies (e.g., "all project-scoped threads in project X expire after 180 days") propagate automatically to new threads in that scope, or must each thread specify its own policy? Automatic inheritance is more correct but requires a policy resolution layer. Manual specification is simpler but creates admin burden. Recommendation: start with manual per-thread specification and add scope-level inheritance as a follow-on.
-
-**Thread search.** `list_threads` supports metadata filtering but not full-text or semantic search over message content. Adding message-level embeddings (similar to `memory_nodes.embedding`) would enable semantic thread retrieval but doubles the per-message storage cost. Defer until there is a demonstrated use case.
-
-**Hard deletion and GDPR right to erasure.** Soft deletion is specified; hard deletion is described as an operator process. The exact API surface for right-to-erasure requests (which tables, in what order, with what audit record of the deletion itself) is not specified here. This should be a follow-on issue.
+**Thread search.** Deferred to a separate issue. `list_threads` supports metadata filtering but not full-text or semantic search over message content. Adding message-level embeddings would enable semantic thread retrieval but doubles per-message storage cost. Will be refined separately.
 
 **Participant access JSONB schema.** The `participant_access` column is described informally. Before implementation, define the schema explicitly (e.g., `{"agent-id-1": "read", "user-id-2": "write"}`) and add a CHECK constraint validating that all values are in `{'read', 'write', 'admin'}`.
-
-**Extraction failure handling.** If extraction fails for a window (LLM error, timeout), the `extraction_cursor` must not advance. The retry strategy (immediate, exponential backoff, dead-letter) is unspecified. Recommendation: use a background task queue with exponential backoff; failed windows are retried up to 3 times before being written to a `conversation_extraction_failures` log table.
