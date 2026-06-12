@@ -26,18 +26,19 @@ import os
 
 from fastmcp import FastMCP
 
-from src.tools.write_memory import write_memory
-from src.tools.read_memory import read_memory
-from src.tools.update_memory import update_memory
 from src.tools.delete_memory import delete_memory
-from src.tools.search_memory import search_memory
 from src.tools.list_memory import list_memory
-from src.tools.register_session import register_session
-from src.tools.manage_session import manage_session
-from src.tools.manage_graph import manage_graph
 from src.tools.manage_curation import manage_curation
+from src.tools.manage_graph import manage_graph
 from src.tools.manage_project import manage_project
+from src.tools.manage_session import manage_session
 from src.tools.memory import memory
+from src.tools.read_memory import read_memory
+from src.tools.register_session import register_session
+from src.tools.search_memory import search_memory
+from src.tools.thread import thread
+from src.tools.update_memory import update_memory
+from src.tools.write_memory import write_memory
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,9 @@ _INSTRUCTIONS_COMPACT = (
     "IMPORTANT: Call register_session(api_key=...) at the start of every "
     "conversation to authenticate. Then use memory(action=...) for all "
     "operations — search, read, write, update, delete, and more. "
-    "See the memory tool's docstring for the full action reference."
+    "Use thread(action=...) for conversation persistence — create, "
+    "append, get, list, and archive governed conversation threads. "
+    "See each tool's docstring for the full action reference."
 )
 
 _INSTRUCTIONS_FULL = (
@@ -89,15 +92,16 @@ _INSTRUCTIONS_MINIMAL = (
 
 # ── Profile-specific tool sets ─────────────────────────────────────────────
 
-_TOOLS_COMPACT = [register_session, memory]
+_TOOLS_COMPACT = [register_session, memory, thread]
 
 _TOOLS_FULL = [
     register_session, write_memory, read_memory, update_memory,
     delete_memory, search_memory, list_memory,
     manage_session, manage_graph, manage_curation, manage_project,
+    thread,
 ]
 
-_TOOLS_MINIMAL = [register_session, search_memory, write_memory, read_memory]
+_TOOLS_MINIMAL = [register_session, search_memory, write_memory, read_memory, thread]
 
 _PROFILE_MAP = {
     "compact": (_TOOLS_COMPACT, _INSTRUCTIONS_COMPACT),
