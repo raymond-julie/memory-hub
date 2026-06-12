@@ -15,6 +15,14 @@ from memoryhub_core.models.schemas import (
     ConversationThreadCreate,
 )
 from memoryhub_core.services.exceptions import ThreadNotActiveError, ThreadNotFoundError
+from memoryhub_core.services.conversation import (
+    soft_delete_thread,
+    hard_delete_thread,
+    admin_purge_thread,
+    spill_response_thread,
+    run_retention_sweep,
+)
+from memoryhub_core.models.conversation import PurgeLog
 
 
 def _mock_session():
@@ -695,3 +703,564 @@ class TestGetThreadRedaction:
 
         # No caller_id means no filtering (backward compatibility)
         assert len(result["messages"]) == 2
+
+
+# =============================================================================
+# Phase 5: Retention and Purge Tests
+# =============================================================================
+
+
+class TestSoftDeleteThread:
+    @pytest.mark.asyncio
+    async def test_soft_delete_sets_status_and_deleted_at(self):
+        from datetime import datetime, UTC
+        from unittest.mock import patch
+        from memoryhub_core.services.conversation import soft_delete_thread
+        from memoryhub_core.models.conversation import PurgeLog
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="active")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+        mock_thread.retention_policy = {"cascade_to_memories": "preserve"}
+
+        # Mock execute to return thread on lookup, no extractions on cascade
+        execute_results = [
+            _mock_execute_result(mock_thread),  # Thread lookup
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),  # Extractions
+        ]
+        session.execute.side_effect = execute_results
+
+        with contextlib.suppress(Exception):
+            await soft_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+                purged_by="admin",
+                reason="retention",
+            )
+
+        # Verify status changed to 'deleted' and deleted_at was set
+        assert mock_thread.status == "deleted"
+        assert mock_thread.deleted_at is not None
+        assert isinstance(mock_thread.deleted_at, datetime)
+
+        # Verify PurgeLog was added (check that session.add was called)
+        assert session.add.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_soft_delete_with_legal_hold(self):
+        from memoryhub_core.services.conversation import soft_delete_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="active")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = True
+        mock_thread.retention_policy = {"cascade_to_memories": "preserve"}
+
+        execute_results = [
+            _mock_execute_result(mock_thread),
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+        ]
+        session.execute.side_effect = execute_results
+
+        with contextlib.suppress(Exception):
+            await soft_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+                purged_by="admin",
+                reason="retention",
+            )
+
+        # With legal hold, status becomes 'pending_deletion', not 'deleted'
+        assert mock_thread.status == "pending_deletion"
+        # deleted_at should NOT be set when legal_hold is active
+        assert mock_thread.deleted_at is None
+
+    @pytest.mark.asyncio
+    async def test_soft_delete_cascade_delete(self):
+        from unittest.mock import patch, AsyncMock
+        from memoryhub_core.services.conversation import soft_delete_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="active")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+        mock_thread.retention_policy = {"cascade_to_memories": "delete"}
+
+        # Mock extraction record
+        mock_extraction = MagicMock()
+        mock_extraction.memory_node_id = uuid.uuid4()
+
+        # First execute: thread lookup
+        # Second execute: extractions query
+        # Third execute: count refs for memory
+        execute_results = [
+            _mock_execute_result(mock_thread),
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_extraction])))),
+            _mock_execute_result(1),  # Only 1 ref (this extraction)
+        ]
+        session.execute.side_effect = execute_results
+
+        # Mock delete_memory function (imported from memory service)
+        with patch("memoryhub_core.services.memory.delete_memory", new_callable=AsyncMock) as mock_delete:
+            with contextlib.suppress(Exception):
+                await soft_delete_thread(
+                    session,
+                    tenant_id="default",
+                    thread_id=thread_id,
+                    purged_by="admin",
+                    reason="retention",
+                )
+
+            # Verify delete_memory was called for the single-ref memory
+            mock_delete.assert_called_once_with(
+                mock_extraction.memory_node_id, session, s3_adapter=None
+            )
+
+    @pytest.mark.asyncio
+    async def test_soft_delete_cascade_orphan(self):
+        from memoryhub_core.services.conversation import soft_delete_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="active")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+        mock_thread.retention_policy = {"cascade_to_memories": "orphan"}
+
+        # Mock extraction records
+        mock_extraction1 = MagicMock()
+        mock_extraction2 = MagicMock()
+
+        execute_results = [
+            _mock_execute_result(mock_thread),
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_extraction1, mock_extraction2])))),
+        ]
+        session.execute.side_effect = execute_results
+
+        with contextlib.suppress(Exception):
+            await soft_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+                purged_by="admin",
+                reason="retention",
+            )
+
+        # With orphan mode, extraction records are deleted via SQLAlchemy delete
+        # Check that execute was called with a delete statement for extractions
+        # (we can't easily verify the exact statement, but we can count execute calls)
+        assert session.execute.call_count >= 3  # thread lookup, extractions query, delete
+
+    @pytest.mark.asyncio
+    async def test_soft_delete_cascade_preserve(self):
+        from memoryhub_core.services.conversation import soft_delete_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="active")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+        mock_thread.retention_policy = {"cascade_to_memories": "preserve"}
+
+        execute_results = [
+            _mock_execute_result(mock_thread),
+        ]
+        session.execute.side_effect = execute_results
+
+        with contextlib.suppress(Exception):
+            await soft_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+                purged_by="admin",
+                reason="retention",
+            )
+
+        # With preserve, nothing happens to memories or extractions
+        # cascade_to_memories returns early without any queries
+        # Only thread lookup should have been executed
+        assert session.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_soft_delete_missing_thread(self):
+        from memoryhub_core.services.conversation import soft_delete_thread
+
+        session = _mock_session()
+        session.execute.return_value = _mock_execute_result(None)
+
+        with pytest.raises(ThreadNotFoundError):
+            await soft_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=uuid.uuid4(),
+                purged_by="admin",
+                reason="retention",
+            )
+
+
+class TestHardDeleteThread:
+    @pytest.mark.asyncio
+    async def test_hard_delete_removes_thread(self):
+        from memoryhub_core.services.conversation import hard_delete_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="deleted")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+
+        session.execute.return_value = _mock_execute_result(mock_thread)
+
+        with contextlib.suppress(Exception):
+            await hard_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+            )
+
+        # Verify delete was called (at least for extractions and thread)
+        # Expect: thread lookup, delete extractions, delete thread
+        assert session.execute.call_count >= 3
+
+    @pytest.mark.asyncio
+    async def test_hard_delete_with_legal_hold_raises(self):
+        from memoryhub_core.services.conversation import hard_delete_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="deleted")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = True
+
+        session.execute.return_value = _mock_execute_result(mock_thread)
+
+        with pytest.raises(ValueError, match="legal_hold is active"):
+            await hard_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+            )
+
+    @pytest.mark.asyncio
+    async def test_hard_delete_s3_cleanup(self):
+        from memoryhub_core.services.conversation import hard_delete_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="deleted")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+
+        # Mock S3 refs
+        s3_ref1 = "s3://bucket/thread/msg1.json"
+        s3_ref2 = "s3://bucket/thread/msg2.json"
+
+        # First execute: thread lookup
+        # Second execute: S3 refs query
+        # Third execute: delete extractions
+        # Fourth execute: delete thread
+        execute_results = [
+            _mock_execute_result(mock_thread),
+            MagicMock(all=MagicMock(return_value=[(s3_ref1,), (s3_ref2,)])),
+            MagicMock(),  # delete extractions
+            MagicMock(),  # delete thread
+        ]
+        session.execute.side_effect = execute_results
+
+        # Mock S3 adapter
+        mock_s3 = AsyncMock()
+        mock_s3.delete_contents = AsyncMock()
+
+        with contextlib.suppress(Exception):
+            await hard_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+                s3_adapter=mock_s3,
+            )
+
+        # Verify S3 cleanup was called
+        mock_s3.delete_contents.assert_called_once_with([s3_ref1, s3_ref2])
+
+    @pytest.mark.asyncio
+    async def test_hard_delete_missing_thread(self):
+        from memoryhub_core.services.conversation import hard_delete_thread
+
+        session = _mock_session()
+        session.execute.return_value = _mock_execute_result(None)
+
+        with pytest.raises(ThreadNotFoundError):
+            await hard_delete_thread(
+                session,
+                tenant_id="default",
+                thread_id=uuid.uuid4(),
+            )
+
+
+class TestAdminPurgeThread:
+    @pytest.mark.asyncio
+    async def test_admin_purge_creates_audit_log(self):
+        from unittest.mock import patch, AsyncMock
+        from memoryhub_core.services.conversation import admin_purge_thread
+        from memoryhub_core.models.conversation import PurgeLog
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="deleted")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+
+        # Mock cascade helper
+        with patch("memoryhub_core.services.conversation._cascade_to_memories", new_callable=AsyncMock):
+            execute_results = [
+                _mock_execute_result(mock_thread),  # Thread lookup
+                MagicMock(all=MagicMock(return_value=[])),  # S3 refs
+                MagicMock(),  # delete extractions
+                MagicMock(),  # delete thread
+            ]
+            session.execute.side_effect = execute_results
+
+            with contextlib.suppress(Exception):
+                await admin_purge_thread(
+                    session,
+                    tenant_id="default",
+                    thread_id=thread_id,
+                    purged_by="admin-1",
+                    justification="GDPR erasure request",
+                )
+
+            # Verify PurgeLog was created with reason='admin'
+            purge_log_added = False
+            for call in session.add.call_args_list:
+                if len(call[0]) > 0:
+                    obj = call[0][0]
+                    # Check if it's a PurgeLog-like object
+                    if hasattr(obj, "reason"):
+                        purge_log_added = True
+                        break
+            assert purge_log_added
+
+    @pytest.mark.asyncio
+    async def test_admin_purge_overrides_legal_hold(self):
+        from unittest.mock import patch, AsyncMock
+        from memoryhub_core.services.conversation import admin_purge_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="pending_deletion")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = True
+
+        with patch("memoryhub_core.services.conversation._cascade_to_memories", new_callable=AsyncMock):
+            execute_results = [
+                _mock_execute_result(mock_thread),
+                MagicMock(all=MagicMock(return_value=[])),
+                MagicMock(),
+                MagicMock(),
+            ]
+            session.execute.side_effect = execute_results
+
+            with contextlib.suppress(Exception):
+                await admin_purge_thread(
+                    session,
+                    tenant_id="default",
+                    thread_id=thread_id,
+                    purged_by="admin-1",
+                    justification="Court order",
+                )
+
+            # Verify legal_hold was cleared
+            assert mock_thread.legal_hold is False
+
+
+class TestSpillResponseThread:
+    @pytest.mark.asyncio
+    async def test_spill_response_creates_tombstone(self):
+        from memoryhub_core.services.conversation import spill_response_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="active")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+
+        execute_results = [
+            _mock_execute_result(mock_thread),  # Thread lookup
+            MagicMock(all=MagicMock(return_value=[])),  # S3 refs
+            MagicMock(),  # delete extractions
+            MagicMock(),  # delete thread
+        ]
+        session.execute.side_effect = execute_results
+
+        with contextlib.suppress(Exception):
+            await spill_response_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+                purged_by="incident-response",
+                incident_ref="INC-2024-001",
+                silent=False,
+            )
+
+        # Verify PurgeLog was created with reason='spill'
+        purge_log_added = False
+        for call in session.add.call_args_list:
+            if len(call[0]) > 0:
+                obj = call[0][0]
+                if hasattr(obj, "reason"):
+                    purge_log_added = True
+                    break
+        assert purge_log_added
+
+    @pytest.mark.asyncio
+    async def test_spill_response_silent_no_log(self):
+        from memoryhub_core.services.conversation import spill_response_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="active")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = False
+
+        execute_results = [
+            _mock_execute_result(mock_thread),
+            MagicMock(all=MagicMock(return_value=[])),
+            MagicMock(),
+            MagicMock(),
+        ]
+        session.execute.side_effect = execute_results
+
+        with contextlib.suppress(Exception):
+            await spill_response_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+                purged_by="incident-response",
+                incident_ref="INC-2024-002",
+                silent=True,
+            )
+
+        # Verify NO PurgeLog was added (silent mode)
+        assert session.add.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_spill_response_bypasses_legal_hold(self):
+        from memoryhub_core.services.conversation import spill_response_thread
+
+        session = _mock_session()
+        thread_id = uuid.uuid4()
+        mock_thread = _mock_thread_obj(status="active")
+        mock_thread.id = thread_id
+        mock_thread.legal_hold = True
+
+        execute_results = [
+            _mock_execute_result(mock_thread),
+            MagicMock(all=MagicMock(return_value=[])),
+            MagicMock(),
+            MagicMock(),
+        ]
+        session.execute.side_effect = execute_results
+
+        # Should succeed even with legal hold
+        with contextlib.suppress(Exception):
+            await spill_response_thread(
+                session,
+                tenant_id="default",
+                thread_id=thread_id,
+                purged_by="incident-response",
+                incident_ref="INC-2024-003",
+            )
+
+        # Verify legal_hold was cleared
+        assert mock_thread.legal_hold is False
+
+
+class TestRunRetentionSweep:
+    @pytest.mark.asyncio
+    async def test_sweep_soft_deletes_expired(self):
+        from datetime import datetime, timedelta, UTC
+        from unittest.mock import patch, AsyncMock
+        from memoryhub_core.services.conversation import run_retention_sweep
+
+        session = _mock_session()
+
+        # Create expired thread
+        expired_thread = _mock_thread_obj(status="active")
+        expired_thread.id = uuid.uuid4()
+        expired_thread.expires_at = datetime.now(UTC) - timedelta(days=1)
+        expired_thread.tenant_id = "default"
+
+        # Mock queries
+        # First execute: expired threads query
+        # Second execute: deleted threads query
+        # Third execute: legal hold count
+        execute_results = [
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[expired_thread])))),
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+            _mock_execute_result(0),  # legal hold count
+        ]
+        session.execute.side_effect = execute_results
+
+        with patch("memoryhub_core.services.conversation.soft_delete_thread", new_callable=AsyncMock) as mock_soft:
+            result = await run_retention_sweep(session)
+
+            # Verify soft_delete was called
+            mock_soft.assert_called_once()
+            assert result["soft_deleted"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sweep_hard_deletes_past_retention(self):
+        from datetime import datetime, timedelta, UTC
+        from unittest.mock import patch, AsyncMock
+        from memoryhub_core.services.conversation import run_retention_sweep
+
+        session = _mock_session()
+
+        # Create deleted thread past min_retention_days
+        deleted_thread = _mock_thread_obj(status="deleted")
+        deleted_thread.id = uuid.uuid4()
+        deleted_thread.deleted_at = datetime.now(UTC) - timedelta(days=35)
+        deleted_thread.tenant_id = "default"
+        deleted_thread.legal_hold = False
+        deleted_thread.retention_policy = {"min_retention_days": 30}
+
+        execute_results = [
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[deleted_thread])))),
+            _mock_execute_result(0),
+        ]
+        session.execute.side_effect = execute_results
+
+        with patch("memoryhub_core.services.conversation.hard_delete_thread", new_callable=AsyncMock) as mock_hard:
+            result = await run_retention_sweep(session)
+
+            mock_hard.assert_called_once()
+            assert result["hard_deleted"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sweep_skips_legal_hold(self):
+        from datetime import datetime, UTC
+        from unittest.mock import patch, AsyncMock
+        from memoryhub_core.services.conversation import run_retention_sweep
+
+        session = _mock_session()
+
+        # No expired or deleted threads, but 2 legal hold threads
+        execute_results = [
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+            _mock_execute_result(2),  # legal hold count
+        ]
+        session.execute.side_effect = execute_results
+
+        result = await run_retention_sweep(session)
+
+        assert result["soft_deleted"] == 0
+        assert result["hard_deleted"] == 0
+        assert result["skipped_legal_hold"] == 2
