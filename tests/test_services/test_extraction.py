@@ -539,6 +539,63 @@ def test_run_gliner_ner_maps_labels_to_pole():
     assert types["AI Summit"] == "event"
 
 
+# ── GLiNER object noise filter tests (#279) ──────────────────────────────
+
+
+@pytest.mark.parametrize("noun", [
+    "state", "model", "user", "node", "broadcast", "Feedback",
+    "status", "data", "config", "client", "server",
+])
+def test_run_gliner_ner_filters_generic_object_nouns(noun):
+    """Generic nouns extracted as object type are filtered (#279)."""
+    fake_model = FakeGLiNERModel([
+        {"text": noun, "label": "technology", "score": 0.85, "start": 0, "end": len(noun)},
+    ])
+    with patch("memoryhub_core.services.extraction._get_gliner", return_value=fake_model):
+        result = run_gliner_ner(f"The {noun} is important.")
+    assert len(result) == 0, f"'{noun}' should have been filtered as a generic object noun"
+
+
+def test_run_gliner_ner_preserves_real_tech_entities():
+    """Real technology entities are not affected by the object filter (#279)."""
+    fake_model = FakeGLiNERModel([
+        {"text": "PostgreSQL", "label": "database", "score": 0.92, "start": 0, "end": 10},
+        {"text": "FastAPI", "label": "framework", "score": 0.88, "start": 15, "end": 22},
+        {"text": "Kubernetes", "label": "technology", "score": 0.90, "start": 28, "end": 38},
+        {"text": "model", "label": "concept", "score": 0.75, "start": 42, "end": 47},  # should be filtered
+    ])
+    with patch("memoryhub_core.services.extraction._get_gliner", return_value=fake_model):
+        result = run_gliner_ner("PostgreSQL with FastAPI on Kubernetes and model")
+    assert len(result) == 3
+    names = {e["name"] for e in result}
+    assert names == {"PostgreSQL", "FastAPI", "Kubernetes"}
+
+
+def test_run_gliner_ner_preserves_non_object_types():
+    """The object filter does not affect person/org/location/event types (#279)."""
+    fake_model = FakeGLiNERModel([
+        {"text": "Alice", "label": "person", "score": 0.99, "start": 0, "end": 5},
+        {"text": "state", "label": "technology", "score": 0.85, "start": 10, "end": 15},  # filtered as object
+    ])
+    with patch("memoryhub_core.services.extraction._get_gliner", return_value=fake_model):
+        result = run_gliner_ner("Alice manages state.")
+    assert len(result) == 1
+    assert result[0]["name"] == "Alice"
+
+
+def test_run_gliner_ner_filters_short_object_words():
+    """Single words with 3 or fewer characters are filtered for object type (#279)."""
+    fake_model = FakeGLiNERModel([
+        {"text": "api", "label": "technology", "score": 0.80, "start": 0, "end": 3},
+        {"text": "TCP", "label": "protocol", "score": 0.85, "start": 5, "end": 8},  # 3 chars but uppercase = real
+    ])
+    with patch("memoryhub_core.services.extraction._get_gliner", return_value=fake_model):
+        result = run_gliner_ner("api and TCP")
+    # "api" is lowercase 3-char -> filtered. "TCP" is uppercase -> not filtered
+    assert len(result) == 1
+    assert result[0]["name"] == "TCP"
+
+
 # ── Cascade logic tests ───────────────────────────────────────────────────
 
 

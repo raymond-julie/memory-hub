@@ -110,9 +110,7 @@ def _is_programming_artifact(name: str) -> bool:
         return True
     if name in _K8S_RESOURCE_TYPES:
         return True
-    if _LOWER_CAMEL_PATTERN.match(name):
-        return True
-    return False
+    return bool(_LOWER_CAMEL_PATTERN.match(name))
 
 
 _nlp = None
@@ -195,6 +193,44 @@ _GLINER_LABEL_TO_POLE: dict[str, str] = {
     "concept": "object",
 }
 
+# ---------------------------------------------------------------------------
+# GLiNER object-type noise filter (#279)
+# ---------------------------------------------------------------------------
+
+# Common English nouns that GLiNER2 over-extracts as technology/concept/tool
+# entities.  These map to POLE "object" type but are never meaningful tech
+# entities on their own.  The list is intentionally conservative -- better to
+# let a borderline term through than to suppress a real entity.
+_GLINER_OBJECT_EXCLUSIONS: frozenset[str] = frozenset({
+    "state", "model", "user", "node", "broadcast", "feedback",
+    "status", "data", "type", "value", "key", "name", "list",
+    "item", "entry", "field", "config", "setting", "option",
+    "result", "response", "request", "error", "event", "action",
+    "task", "job", "role", "rule", "mode", "level", "scope",
+    "phase", "stage", "step", "flow", "path", "route", "endpoint",
+    "client", "server", "service", "handler", "worker", "agent",
+    "session", "context", "instance", "object", "entity", "record",
+    "log", "metric", "trace", "hook", "plugin", "module",
+    "package", "class", "method", "function", "variable", "parameter",
+    "argument", "interface", "schema", "format", "pattern", "template",
+})
+
+
+def _is_gliner_object_noise(name: str) -> bool:
+    """Return True if *name* is a generic noun that should not be an ``object`` entity.
+
+    Catches two patterns:
+    - Lowercased name appears in the curated exclusion set.
+    - Single all-lowercase word with 3 or fewer characters (too short to be
+      a meaningful technology name; real short tech names like "TCP" or "AWS"
+      are uppercase).
+    """
+    lowered = name.lower()
+    if lowered in _GLINER_OBJECT_EXCLUSIONS:
+        return True
+    return name == lowered and len(name) <= 3 and " " not in name
+
+
 _gliner_model = None
 
 
@@ -241,6 +277,9 @@ def run_gliner_ner(text: str) -> list[dict[str, Any]]:
         if key in seen:
             continue
         seen.add(key)
+
+        if pole_type == "object" and _is_gliner_object_noise(name):
+            continue
 
         entities.append({
             "name": name,
