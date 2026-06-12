@@ -16,7 +16,7 @@ from src.core.app import mcp
 logger = logging.getLogger(__name__)
 
 _VALID_ACTIONS = frozenset({
-    "create", "append", "get", "list", "archive", "extract", "fork", "share",
+    "create", "append", "get", "list", "archive", "extract", "fork", "share", "delete",
 })
 
 _CREATE_OPTS = frozenset({
@@ -32,6 +32,7 @@ _ARCHIVE_OPTS = frozenset({"reason"})
 _EXTRACT_OPTS = frozenset({"turn_range", "model", "model_url"})
 _FORK_OPTS = frozenset({"from_sequence", "title"})
 _SHARE_OPTS = frozenset({"grantee_id", "access_level", "authorized_by"})
+_DELETE_OPTS = frozenset({"cascade"})
 
 
 def _require(action: str, name: str, value: Any) -> Any:
@@ -60,7 +61,7 @@ async def thread(
         str,
         Field(description=(
             "The operation to perform: create, append, get, list, archive, "
-            "extract, fork, share."
+            "extract, fork, share, delete."
         )),
     ],
     thread_id: Annotated[
@@ -116,6 +117,8 @@ async def thread(
       share(thread_id, [options: grantee_id (required), access_level (required),
             authorized_by])
         Grant read/write/admin access to another agent or user.
+      delete(thread_id, [options: cascade])
+        Soft-delete a thread. Cascade: delete (default), orphan, preserve.
     """
     if action not in _VALID_ACTIONS:
         raise ToolError(
@@ -139,7 +142,9 @@ async def thread(
         return await _dispatch_extract(thread_id, opts, ctx)
     if action == "fork":
         return await _dispatch_fork(thread_id, opts, ctx)
-    return await _dispatch_share(thread_id, opts, ctx)
+    if action == "share":
+        return await _dispatch_share(thread_id, opts, ctx)
+    return await _dispatch_delete(thread_id, opts, ctx)
 
 
 async def _dispatch_create(scope, opts, ctx):
@@ -667,6 +672,69 @@ async def _dispatch_share(thread_id_str, opts, ctx):
         )
         if ctx is not None:
             await ctx.info(f"Shared thread {tid} with {grantee_id} ({access_level})")
+        return result.model_dump(mode="json")
+    except ThreadNotFoundError as exc:
+        raise ToolError("Thread not found.") from exc
+    finally:
+        await release_db_session(gen)
+
+
+async def _dispatch_delete(thread_id_str, opts, ctx):
+    from src.core.authz import (
+        AuthenticationError,
+        authorize_thread_admin,
+        get_claims_from_context,
+        get_tenant_filter,
+    )
+    from src.tools._deps import get_db_session, release_db_session
+
+    from memoryhub_core.services.conversation import soft_delete_thread
+    from memoryhub_core.services.exceptions import ThreadNotFoundError
+
+    _require("delete", "thread_id", thread_id_str)
+
+    try:
+        tid = uuid.UUID(thread_id_str)
+    except ValueError as exc:
+        raise ToolError(f"Invalid thread_id: {thread_id_str}") from exc
+
+    try:
+        claims = get_claims_from_context()
+    except AuthenticationError as exc:
+        raise ToolError(str(exc)) from exc
+
+    tenant = get_tenant_filter(claims)
+    caller_id = claims["sub"]
+
+    delete_opts = _forward(opts, _DELETE_OPTS)
+
+    session, gen = await get_db_session()
+    try:
+        from sqlalchemy import select
+
+        from memoryhub_core.models.conversation import ConversationThread
+
+        stmt = select(ConversationThread).where(
+            ConversationThread.id == tid,
+            ConversationThread.tenant_id == tenant,
+        )
+        res = await session.execute(stmt)
+        thread_obj = res.scalar_one_or_none()
+
+        if thread_obj is None:
+            raise ToolError("Thread not found.")
+        if not authorize_thread_admin(claims, thread_obj):
+            raise ToolError("Not authorized to delete this thread.")
+
+        result = await soft_delete_thread(
+            session,
+            tenant_id=tenant,
+            thread_id=tid,
+            purged_by=caller_id,
+            cascade_override=delete_opts.get("cascade"),
+        )
+        if ctx is not None:
+            await ctx.info(f"Deleted thread {tid} (status={result.status})")
         return result.model_dump(mode="json")
     except ThreadNotFoundError as exc:
         raise ToolError("Thread not found.") from exc

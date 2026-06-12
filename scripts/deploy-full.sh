@@ -360,7 +360,24 @@ deploy_infra() {
 }
 
 # ---------------------------------------------------------------------------
-# Section 3: MCP Server
+# Section 3c: Retention Enforcement CronJob
+# ---------------------------------------------------------------------------
+deploy_retention_cronjob() {
+    banner "3c. Retention Enforcement CronJob"
+
+    if [ "$SKIP_DB" = true ]; then
+        skipped "Retention CronJob (DB skipped)"
+        return 0
+    fi
+
+    info "Deploying retention sweep CronJob..."
+    oc apply --context "$CONTEXT" -f "$REPO_ROOT/deploy/retention/cronjob.yaml"
+    echo ""
+    echo -e "  ${GREEN}Retention CronJob deployed${RESET}"
+}
+
+# ---------------------------------------------------------------------------
+# Section 4: MCP Server
 # ---------------------------------------------------------------------------
 deploy_mcp() {
     banner "4. MCP Server"
@@ -607,6 +624,7 @@ main() {
     restore_from_backup
     run_migrations
     deploy_infra          # MinIO + Valkey before MCP
+    deploy_retention_cronjob  # Retention sweep after DB
     deploy_mcp
     prepare_auth_infra    # Secrets before auth
     deploy_auth
