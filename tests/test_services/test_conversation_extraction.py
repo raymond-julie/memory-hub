@@ -226,7 +226,7 @@ class TestExtractWindow:
                     messages=messages,
                     model="test-model",
                     url="http://test",
-                    timeout=30,
+                    client=MagicMock(),
                     embedding_service=mock_embedding,
                 )
 
@@ -272,7 +272,7 @@ class TestExtractWindow:
                     messages=messages,
                     model="test-model",
                     url="http://test",
-                    timeout=30,
+                    client=MagicMock(),
                     embedding_service=mock_embedding,
                 )
 
@@ -297,7 +297,7 @@ class TestExtractWindow:
                 messages=messages,
                 model="test-model",
                 url="http://test",
-                timeout=30,
+                client=MagicMock(),
                 embedding_service=mock_embedding,
             )
 
@@ -321,7 +321,7 @@ class TestExtractWindow:
                 messages=messages,
                 model="test-model",
                 url="http://test",
-                timeout=30,
+                client=MagicMock(),
                 embedding_service=mock_embedding,
             )
 
@@ -594,7 +594,6 @@ class TestCallExtractionLLM:
         formatted = "[USER]: Hello"
         system_prompt = "You are a memory extractor"
 
-        # Mock httpx client to fail twice, succeed on third
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "choices": [{"message": {"content": '{"extractions": []}'}}]
@@ -611,16 +610,14 @@ class TestCallExtractionLLM:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=post_side_effect)
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client_class.return_value.__aenter__.return_value = mock_client
-            with patch("asyncio.sleep"):  # Don't actually sleep
-                result = await _call_extraction_llm(
-                    formatted,
-                    system_prompt,
-                    model="test-model",
-                    url="http://test",
-                    timeout=30,
-                )
+        with patch("asyncio.sleep"):
+            result = await _call_extraction_llm(
+                formatted,
+                system_prompt,
+                client=mock_client,
+                model="test-model",
+                url="http://test",
+            )
 
         assert call_count[0] == 3
         assert result == []
@@ -635,20 +632,18 @@ class TestCallExtractionLLM:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection error"))
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client_class.return_value.__aenter__.return_value = mock_client
-            with patch("asyncio.sleep"):  # Don't actually sleep
-                with pytest.raises(httpx.ConnectError):
-                    await _call_extraction_llm(
-                        formatted,
-                        system_prompt,
-                        model="test-model",
-                        url="http://test",
-                        timeout=30,
-                    )
+        with patch("asyncio.sleep"):
+            with pytest.raises(httpx.ConnectError):
+                await _call_extraction_llm(
+                    formatted,
+                    system_prompt,
+                    client=mock_client,
+                    model="test-model",
+                    url="http://test",
+                )
 
-        # Should have tried 3 times
-        assert mock_client.post.call_count == 3
+        # 4 attempts: 1 initial + 1 immediate retry + 2 backoff
+        assert mock_client.post.call_count == 4
 
     @pytest.mark.asyncio
     async def test_call_extraction_llm_success(self):
@@ -667,15 +662,13 @@ class TestCallExtractionLLM:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client_class.return_value.__aenter__.return_value = mock_client
-            result = await _call_extraction_llm(
-                formatted,
-                system_prompt,
-                model="test-model",
-                url="http://test",
-                timeout=30,
-            )
+        result = await _call_extraction_llm(
+            formatted,
+            system_prompt,
+            client=mock_client,
+            model="test-model",
+            url="http://test",
+        )
 
         assert len(result) == 1
         assert result[0]["content"] == "User prefers Python"

@@ -38,8 +38,8 @@ from memoryhub_core.models.schemas import MemoryNodeCreate
 
 logger = logging.getLogger(__name__)
 
-_MAX_RETRIES = 3
-_RETRY_DELAYS = [30.0, 60.0, 120.0]
+_MAX_RETRIES = 4
+_RETRY_DELAYS = [0.0, 30.0, 60.0, 120.0]
 
 _prompt_cache: dict[str, tuple[str, str]] = {}
 
@@ -123,67 +123,66 @@ async def _call_extraction_llm(
     formatted_messages: str,
     system_prompt: str,
     *,
+    client: httpx.AsyncClient,
     model: str,
     url: str,
-    timeout: int,
 ) -> list[dict[str, Any]]:
     """Call the extraction LLM and return parsed extractions.
 
     Uses OpenAI-compatible /v1/chat/completions endpoint.
-    Retries with exponential backoff on transient failures.
+    Retries: immediate once, then exponential backoff (30s, 60s, 120s).
     """
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": formatted_messages},
     ]
 
-    async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
-        last_error: Exception | None = None
+    last_error: Exception | None = None
 
-        for attempt in range(_MAX_RETRIES):
-            try:
-                response = await client.post(
-                    f"{url.rstrip('/')}/v1/chat/completions",
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "temperature": 0.0,
-                        "max_tokens": 4000,
-                        "response_format": {"type": "json_object"},
-                    },
+    for attempt in range(_MAX_RETRIES):
+        try:
+            response = await client.post(
+                f"{url.rstrip('/')}/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.0,
+                    "max_tokens": 4000,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            response.raise_for_status()
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            last_error = exc
+            if attempt < _MAX_RETRIES - 1:
+                delay = _RETRY_DELAYS[attempt]
+                logger.warning(
+                    "Extraction LLM connection error (attempt %d/%d): %s -- retrying in %.0fs",
+                    attempt + 1, _MAX_RETRIES, exc, delay,
                 )
-                response.raise_for_status()
-            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                await asyncio.sleep(delay)
+            continue
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status in (429, 502, 503, 504):
                 last_error = exc
                 if attempt < _MAX_RETRIES - 1:
                     delay = _RETRY_DELAYS[attempt]
                     logger.warning(
-                        "Extraction LLM connection error (attempt %d/%d): %s -- retrying in %.0fs",
-                        attempt + 1, _MAX_RETRIES, exc, delay,
+                        "Extraction LLM returned %d (attempt %d/%d) -- retrying in %.0fs",
+                        status, attempt + 1, _MAX_RETRIES, delay,
                     )
                     await asyncio.sleep(delay)
                 continue
-            except httpx.HTTPStatusError as exc:
-                status = exc.response.status_code
-                if status in (429, 502, 503, 504):
-                    last_error = exc
-                    if attempt < _MAX_RETRIES - 1:
-                        delay = _RETRY_DELAYS[attempt]
-                        logger.warning(
-                            "Extraction LLM returned %d (attempt %d/%d) -- retrying in %.0fs",
-                            status, attempt + 1, _MAX_RETRIES, delay,
-                        )
-                        await asyncio.sleep(delay)
-                    continue
-                raise
-            else:
-                raw_content = response.json()["choices"][0]["message"]["content"]
-                parsed = _parse_json_best_effort(raw_content)
-                if parsed is None:
-                    raise ValueError(f"LLM returned non-JSON response: {raw_content[:200]}")
-                return parsed.get("extractions", [])
+            raise
+        else:
+            raw_content = response.json()["choices"][0]["message"]["content"]
+            parsed = _parse_json_best_effort(raw_content)
+            if parsed is None:
+                raise ValueError(f"LLM returned non-JSON response: {raw_content[:200]}")
+            return parsed.get("extractions", [])
 
-        raise last_error or RuntimeError("Extraction LLM failed after all retries")
+    raise last_error or RuntimeError("Extraction LLM failed after all retries")
 
 
 async def _extract_window(
@@ -191,9 +190,9 @@ async def _extract_window(
     *,
     thread: ConversationThread,
     messages: list[ConversationMessage],
+    client: httpx.AsyncClient,
     model: str,
     url: str,
-    timeout: int,
     embedding_service: Any,
     s3_adapter: Any | None = None,
 ) -> list[uuid.UUID]:
@@ -209,9 +208,9 @@ async def _extract_window(
     extractions = await _call_extraction_llm(
         formatted,
         system_prompt,
+        client=client,
         model=model,
         url=url,
-        timeout=timeout,
     )
 
     source_seqs = [m.sequence_number for m in messages]
@@ -395,42 +394,46 @@ async def extract_from_thread(
     total_extracted = 0
     total_failures = 0
 
-    for window in windows:
-        window_start = window[0].sequence_number
-        window_end = window[-1].sequence_number
+    async with httpx.AsyncClient(
+        timeout=settings.conv_extraction_timeout, verify=False,
+    ) as client:
+        for window in windows:
+            window_start = window[0].sequence_number
+            window_end = window[-1].sequence_number
 
-        try:
-            created_ids = await _extract_window(
-                session,
-                thread=thread,
-                messages=window,
-                model=model,
-                url=url,
-                timeout=settings.conv_extraction_timeout,
-                embedding_service=embedding_service,
-                s3_adapter=s3_adapter,
-            )
-            total_extracted += len(created_ids)
-        except Exception as exc:
-            logger.warning(
-                "Extraction failed for thread %s window [%d-%d]: %s",
-                thread_id, window_start, window_end, exc,
-            )
-            await _log_failure(
-                session,
-                thread_id=thread_id,
-                window_start=window_start,
-                window_end=window_end,
-                error=str(exc),
-                tenant_id=tenant_id,
-            )
-            total_failures += 1
+            try:
+                created_ids = await _extract_window(
+                    session,
+                    thread=thread,
+                    messages=window,
+                    client=client,
+                    model=model,
+                    url=url,
+                    embedding_service=embedding_service,
+                    s3_adapter=s3_adapter,
+                )
+                total_extracted += len(created_ids)
+            except Exception as exc:
+                logger.warning(
+                    "Extraction failed for thread %s window [%d-%d]: %s",
+                    thread_id, window_start, window_end, exc,
+                )
+                await _log_failure(
+                    session,
+                    thread_id=thread_id,
+                    window_start=window_start,
+                    window_end=window_end,
+                    error=str(exc),
+                    tenant_id=tenant_id,
+                )
+                total_failures += 1
 
-        # Advance cursor past this window regardless of success/failure
-        if turn_range is None:
-            thread.extraction_cursor = window_end
-            thread.last_extracted_at = datetime.now(UTC)
-            await session.commit()
+            # Advance cursor past this window regardless of success/failure
+            # (design doc: cursor advances past failed windows to avoid blocking)
+            if turn_range is None:
+                thread.extraction_cursor = window_end
+                thread.last_extracted_at = datetime.now(UTC)
+                await session.commit()
 
     return {
         "extracted_count": total_extracted,
