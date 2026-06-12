@@ -16,7 +16,6 @@ from fastmcp.exceptions import ToolError
 import src.tools.auth as auth_mod
 from src.tools.manage_graph import manage_graph
 
-
 # ── tool-level structural tests ──────────────────────────────────────────────
 
 def test_manage_graph_is_callable():

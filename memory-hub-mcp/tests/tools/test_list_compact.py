@@ -2,7 +2,7 @@
 
 import inspect
 import uuid as _uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -31,8 +31,8 @@ def _fake_list_item(content: str, weight: float = 0.8, *, branch_type=None):
         version=1,
         previous_version_id=None,
         metadata=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
         expires_at=None,
         has_children=False,
         has_rationale=False,

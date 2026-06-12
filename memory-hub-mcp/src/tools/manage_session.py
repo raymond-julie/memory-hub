@@ -12,7 +12,7 @@ Actions:
 """
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
 from fastmcp import Context
@@ -321,7 +321,7 @@ async def _handle_focus_history(
     parsed_start = _parse_iso_date("start_date", start_date)
 
     if parsed_end is None:
-        parsed_end = datetime.now(timezone.utc).date()
+        parsed_end = datetime.now(UTC).date()
     if parsed_start is None:
         parsed_start = parsed_end - timedelta(days=_DEFAULT_WINDOW_DAYS)
 

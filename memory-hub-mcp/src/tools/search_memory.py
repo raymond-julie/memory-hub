@@ -17,6 +17,7 @@ from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+from memoryhub_core.models.memory import MemoryNode
 from memoryhub_core.models.schemas import MemoryNodeRead, MemoryNodeStub, MemoryScope
 from memoryhub_core.services.campaign import get_campaigns_for_project
 from memoryhub_core.services.compilation import (
@@ -30,13 +31,6 @@ from memoryhub_core.services.exceptions import (
     EmbeddingServiceError,
     EmbeddingServiceUnavailableError,
 )
-from memoryhub_core.services.project import get_projects_for_user
-from memoryhub_core.services.role import get_roles_for_user
-from memoryhub_core.services.valkey_client import (
-    ValkeyUnavailableError,
-    get_valkey_client,
-)
-from memoryhub_core.models.memory import MemoryNode
 from memoryhub_core.services.memory import (
     _build_search_filters,
     _bulk_branch_flags,
@@ -45,11 +39,17 @@ from memoryhub_core.services.memory import (
     search_memories,
     search_memories_with_focus,
 )
+from memoryhub_core.services.project import get_projects_for_user
+from memoryhub_core.services.role import get_roles_for_user
+from memoryhub_core.services.valkey_client import (
+    ValkeyUnavailableError,
+    get_valkey_client,
+)
 from src.core.app import mcp
 from src.core.authz import (
-    AuthenticationError,
     PROJECT_ISOLATION_ENABLED,
     ROLE_ISOLATION_ENABLED,
+    AuthenticationError,
     build_authorized_scopes,
     get_claims_from_context,
     get_tenant_filter,
@@ -741,7 +741,7 @@ async def search_memory(
     try:
         claims = get_claims_from_context()
     except AuthenticationError as exc:
-        raise ToolError(str(exc))
+        raise ToolError(str(exc)) from None
 
     # Build RBAC visibility filter + resolve caller tenant for SQL-level
     # isolation. Tenant filter is ALWAYS applied, independent of scopes.

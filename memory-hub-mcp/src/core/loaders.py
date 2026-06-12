@@ -2,10 +2,11 @@ import importlib
 import importlib.util
 import pkgutil
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from fastmcp import FastMCP
+
 from .logging import get_logger
 
 log = get_logger("loaders")
@@ -194,8 +195,8 @@ def load_middleware(mcp: FastMCP, middleware_dir: Path) -> int:
 # Hot‑reload (dev only)
 # ---------------------------
 try:
-    from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler
+    from watchdog.observers import Observer
 except Exception:  # pragma: no cover
     Observer = None
     FileSystemEventHandler = object  # type: ignore

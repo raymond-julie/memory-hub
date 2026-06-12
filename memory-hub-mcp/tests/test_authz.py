@@ -1,18 +1,18 @@
 """Tests for the authorization module (src.core.authz)."""
 
-import pytest
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.core.authz import (
+    AuthenticationError,
     authorize_read,
     authorize_write,
     build_authorized_scopes,
     get_claims_from_context,
     get_tenant_filter,
-    AuthenticationError,
 )
-
 
 # -- authorize_read ----------------------------------------------------------
 

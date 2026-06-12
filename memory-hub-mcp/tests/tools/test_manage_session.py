@@ -7,7 +7,7 @@ get_focus_history with a single action-dispatch interface.
 
 import inspect
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
@@ -21,7 +21,6 @@ from memoryhub_core.services.valkey_client import (
     set_valkey_client,
 )
 from src.tools.manage_session import manage_session
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -460,7 +459,7 @@ async def test_focus_history_respects_project_boundary(fake_valkey, mock_claims)
 async def test_focus_history_default_window_is_30_days_ending_today(fake_valkey, mock_claims):
     """With both dates omitted the window should be [today-30, today]."""
     ctx = AsyncMock()
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
 
     result = await manage_session(action="focus_history", project="memory-hub", ctx=ctx)
 

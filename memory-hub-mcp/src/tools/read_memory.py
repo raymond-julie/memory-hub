@@ -8,6 +8,12 @@ from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+from memoryhub_core.services.campaign import get_campaigns_for_project
+from memoryhub_core.services.exceptions import MemoryNotFoundError
+from memoryhub_core.services.memory import get_memory_history
+from memoryhub_core.services.memory import read_memory as _read_memory
+from memoryhub_core.services.project import get_projects_for_user
+from memoryhub_core.services.role import get_roles_for_user
 from src.core.app import mcp
 from src.core.authz import (
     AuthenticationError,
@@ -16,12 +22,6 @@ from src.core.authz import (
     get_tenant_filter,
 )
 from src.tools._deps import get_db_session, get_s3_adapter, release_db_session
-
-from memoryhub_core.services.campaign import get_campaigns_for_project
-from memoryhub_core.services.project import get_projects_for_user
-from memoryhub_core.services.role import get_roles_for_user
-from memoryhub_core.services.exceptions import MemoryNotFoundError
-from memoryhub_core.services.memory import get_memory_history, read_memory as _read_memory
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ async def read_memory(
     except ValueError:
         raise ToolError(
             f"Invalid memory_id format: '{memory_id}'. Must be a valid UUID."
-        )
+        ) from None
 
     session = None
     gen = None
@@ -217,7 +217,7 @@ async def read_memory(
         raise ToolError(
             f"Memory {memory_id} not found. It may have been deleted, "
             "or you may not have access to this memory's scope."
-        )
+        ) from None
     except Exception as exc:
         logger.error("Failed to read memory %s: %s", memory_id, exc, exc_info=True)
         raise ToolError(

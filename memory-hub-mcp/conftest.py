@@ -26,8 +26,8 @@ def _default_test_session():
     denial should override this by calling set_session() with a
     restricted user.
     """
-    from src.tools.auth import set_session
     import src.tools.auth as auth_mod
+    from src.tools.auth import set_session
 
     set_session({
         "user_id": "test-user",

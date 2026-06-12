@@ -1,6 +1,7 @@
 """Tests for search_memory tool."""
 
 import inspect
+from datetime import UTC
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -94,7 +95,7 @@ def _fake_full_result(
     branch handling, and mode/budget degradation behavior.
     """
     import uuid as _uuid
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from memoryhub_core.models.schemas import MemoryNodeRead, MemoryScope, StorageType
 
@@ -115,8 +116,8 @@ def _fake_full_result(
             version=1,
             previous_version_id=None,
             metadata=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             expires_at=None,
             has_children=has_children,
             has_rationale=has_rationale,
@@ -1234,7 +1235,7 @@ async def test_raw_results_preserves_similarity_order():
 async def test_appendix_entries_flagged():
     """Memories not in the existing compilation epoch are flagged with
     is_appendix=True; compiled memories have is_appendix=False."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from memoryhub_core.services.compilation import compile_memory_set
 
@@ -1253,7 +1254,7 @@ async def test_appendix_entries_flagged():
     epoch = compile_memory_set(
         compiled_mems,
         epoch=1,
-        now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        now=datetime(2026, 1, 1, tzinfo=UTC),
     )
     epoch_data = epoch.to_dict()
 

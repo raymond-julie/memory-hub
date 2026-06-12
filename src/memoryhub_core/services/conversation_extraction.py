@@ -222,7 +222,7 @@ async def _extract_window(
             continue
 
         weight = item.get("weight", 0.7)
-        if not isinstance(weight, (int, float)) or weight < 0.5:
+        if not isinstance(weight, int | float) or weight < 0.5:
             continue
 
         weight = min(max(float(weight), 0.0), 1.0)

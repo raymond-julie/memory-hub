@@ -55,7 +55,7 @@ from memoryhub_cli.project_config import (
 
 def _version_callback(value: bool) -> None:
     if value:
-        print(f"memoryhub {pkg_version('memoryhub-cli')}")
+        print(f"memoryhub {pkg_version('memoryhub-cli')}")  # noqa: T201
         raise typer.Exit()
 
 
@@ -189,12 +189,12 @@ def _get_project_id_default() -> str | None:
 def _print_compact(memories, project_id: str | None = None) -> None:
     """Print memories as content-only text for LLM context injection."""
     attr = f' project="{project_id}"' if project_id else ""
-    print(f"<memoryhub-context{attr}>")
+    print(f"<memoryhub-context{attr}>")  # noqa: T201
     for mem in memories:
         content = mem.content or mem.stub or ""
         for line in content.splitlines():
-            print(f"- {line}")
-    print("</memoryhub-context>")
+            print(f"- {line}")  # noqa: T201
+    print("</memoryhub-context>")  # noqa: T201
 
 
 def _run(coro):
@@ -242,7 +242,7 @@ def login(
         "client_secret": client_secret,
     })
     if output == OutputFormat.table:
-        console.print("[green]Configuration saved.[/green]")
+        console.print("[green]Configuration saved.[/green]")  # noqa: T201
 
     # Test connectivity
     async def _test():
@@ -261,13 +261,13 @@ def login(
         if output == OutputFormat.json:
             json_success({"saved": True, "connection": "verified"})
         elif output == OutputFormat.table:
-            console.print("[green]Connection verified.[/green]")
+            console.print("[green]Connection verified.[/green]")  # noqa: T201
     except Exception as exc:
         if output == OutputFormat.json:
             json_success({"saved": True, "connection": "failed", "warning": str(exc)})
         elif output == OutputFormat.table:
-            err_console.print(f"[yellow]Warning: connection test failed: {exc}[/yellow]")
-            err_console.print("Credentials saved anyway. Check URL and credentials.")
+            err_console.print(f"[yellow]Warning: connection test failed: {exc}[/yellow]")  # noqa: T201
+            err_console.print("Credentials saved anyway. Check URL and credentials.")  # noqa: T201
 
 
 @app.command()
@@ -313,7 +313,7 @@ def search(
         return
 
     if not result.results:
-        console.print("[dim]No results found.[/dim]")
+        console.print("[dim]No results found.[/dim]")  # noqa: T201
         return
 
     table = Table(title=f"Search: {query}")
@@ -333,9 +333,9 @@ def search(
             (mem.stub or mem.content)[:60],
         )
 
-    console.print(table)
+    console.print(table)  # noqa: T201
     more = " (more available)" if result.has_more else ""
-    console.print(
+    console.print(  # noqa: T201
         f"[dim]{len(result.results)} of {result.total_matching} matching{more}[/dim]"
     )
 
@@ -382,7 +382,7 @@ def list_memories(
         return
 
     if not memories:
-        console.print("[dim]No memories found.[/dim]")
+        console.print("[dim]No memories found.[/dim]")  # noqa: T201
         return
 
     table = Table(title="Memories")
@@ -399,10 +399,10 @@ def list_memories(
             (mem.get("stub") or mem.get("content", ""))[:60],
         )
 
-    console.print(table)
+    console.print(table)  # noqa: T201
     cursor = result.get("cursor")
     if cursor:
-        console.print("[dim]More available. Use --cursor to paginate.[/dim]")
+        console.print("[dim]More available. Use --cursor to paginate.[/dim]")  # noqa: T201
 
 
 @app.command()
@@ -442,7 +442,7 @@ def reconstruct(
         return
 
     if not result.results:
-        console.print("[dim]No behavioral memories found.[/dim]")
+        console.print("[dim]No behavioral memories found.[/dim]")  # noqa: T201
         return
 
     table = Table(title="Behavioral Memories")
@@ -459,7 +459,7 @@ def reconstruct(
             (mem.stub or mem.content)[:60],
         )
 
-    console.print(table)
+    console.print(table)  # noqa: T201
 
 
 @app.command()
@@ -488,14 +488,14 @@ def read(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[bold]{memory.scope}[/bold] | v{memory.version} | weight {memory.weight:.2f}")
-    console.print(f"[dim]ID: {memory.id}[/dim]")
-    console.print(f"[dim]Owner: {memory.owner_id}[/dim]")
-    console.print()
-    console.print(memory.content)
+    console.print(f"[bold]{memory.scope}[/bold] | v{memory.version} | weight {memory.weight:.2f}")  # noqa: T201
+    console.print(f"[dim]ID: {memory.id}[/dim]")  # noqa: T201
+    console.print(f"[dim]Owner: {memory.owner_id}[/dim]")  # noqa: T201
+    console.print()  # noqa: T201
+    console.print(memory.content)  # noqa: T201
 
     if memory.branch_count:
-        console.print(
+        console.print(  # noqa: T201
             f"\n[dim]{memory.branch_count} branch(es). "
             f"Search or read by ID to inspect them.[/dim]"
         )
@@ -558,21 +558,21 @@ def write(
         return
 
     if result.curation.gated:
-        err_console.print("[yellow]Write gated by curation.[/yellow]")
-        err_console.print(f"  Reason: {result.curation.reason}")
+        err_console.print("[yellow]Write gated by curation.[/yellow]")  # noqa: T201
+        err_console.print(f"  Reason: {result.curation.reason}")  # noqa: T201
         if result.curation.existing_memory_id:
-            err_console.print(f"  Existing: {result.curation.existing_memory_id}")
+            err_console.print(f"  Existing: {result.curation.existing_memory_id}")  # noqa: T201
         if result.curation.recommendation:
-            err_console.print(f"  Recommendation: {result.curation.recommendation}")
+            err_console.print(f"  Recommendation: {result.curation.recommendation}")  # noqa: T201
         raise typer.Exit(EXIT_CLIENT_ERROR)
 
     mem = result.memory
-    console.print(f"[green]Memory created:[/green] {mem.id}")
-    console.print(f"  Scope: {mem.scope} | Weight: {mem.weight:.2f} | Version: {mem.version}")
+    console.print(f"[green]Memory created:[/green] {mem.id}")  # noqa: T201
+    console.print(f"  Scope: {mem.scope} | Weight: {mem.weight:.2f} | Version: {mem.version}")  # noqa: T201
     if result.curation.blocked:
-        console.print("[yellow]Note: curation pipeline blocked this write.[/yellow]")
+        console.print("[yellow]Note: curation pipeline blocked this write.[/yellow]")  # noqa: T201
     elif result.curation.similar_count > 0:
-        console.print(
+        console.print(  # noqa: T201
             f"[dim]Curation: {result.curation.similar_count} similar memories found"
             f" (nearest score: {result.curation.nearest_score:.3f})[/dim]"
         )
@@ -617,7 +617,7 @@ def delete(
     if output == OutputFormat.quiet:
         return
 
-    console.print(
+    console.print(  # noqa: T201
         f"[green]Deleted:[/green] {result.total_deleted} nodes "
         f"({result.versions_deleted} versions, {result.branches_deleted} branches)"
     )
@@ -683,8 +683,8 @@ def update(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Memory updated:[/green] {memory.id}")
-    console.print(
+    console.print(f"[green]Memory updated:[/green] {memory.id}")  # noqa: T201
+    console.print(  # noqa: T201
         f"  Scope: {memory.scope} | Weight: {memory.weight:.2f} | "
         f"Version: {memory.version}"
     )
@@ -721,7 +721,7 @@ def history(
         return
 
     if not result.versions:
-        console.print("[dim]No version history found.[/dim]")
+        console.print("[dim]No version history found.[/dim]")  # noqa: T201
         return
 
     table = Table(title=f"History: {memory_id[:12]}...")
@@ -740,9 +740,9 @@ def history(
             (v.stub or v.content)[:60],
         )
 
-    console.print(table)
+    console.print(table)  # noqa: T201
     if result.has_more:
-        console.print(
+        console.print(  # noqa: T201
             f"[dim]Showing {len(result.versions)} of {result.total_versions} versions[/dim]"
         )
 
@@ -786,9 +786,9 @@ def promote(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Promoted:[/green] {result.id}")
-    console.print(f"  Scope: {result.scope} | Content type: {result.content_type}")
-    console.print(f"  Source: {memory_id[:12]}...")
+    console.print(f"[green]Promoted:[/green] {result.id}")  # noqa: T201
+    console.print(f"  Scope: {result.scope} | Content type: {result.content_type}")  # noqa: T201
+    console.print(f"  Source: {memory_id[:12]}...")  # noqa: T201
 
 
 @app.command()
@@ -828,11 +828,11 @@ def graduate(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Graduated:[/green] {result.id}")
-    console.print(f"  Content type: {result.content_type} | Scope: {result.scope}")
-    console.print(f"  Source: {memory_id[:12]}...")
+    console.print(f"[green]Graduated:[/green] {result.id}")  # noqa: T201
+    console.print(f"  Content type: {result.content_type} | Scope: {result.scope}")  # noqa: T201
+    console.print(f"  Source: {memory_id[:12]}...")  # noqa: T201
     if evidence:
-        console.print("  Evidence branch attached.")
+        console.print("  Evidence branch attached.")  # noqa: T201
 
 
 @app.command()
@@ -887,14 +887,14 @@ def checkpoint(
     current_state = result.get("state")
     if state_dict is not None:
         verb = "Created" if result.get("created") else "Updated"
-        console.print(f"[green]{verb} checkpoint:[/green] {wf}")
+        console.print(f"[green]{verb} checkpoint:[/green] {wf}")  # noqa: T201
     else:
         if current_state is None:
-            console.print(f"[dim]No checkpoint found for workflow '{wf}'.[/dim]")
+            console.print(f"[dim]No checkpoint found for workflow '{wf}'.[/dim]")  # noqa: T201
             return
-        console.print(f"[bold]Checkpoint:[/bold] {wf}")
+        console.print(f"[bold]Checkpoint:[/bold] {wf}")  # noqa: T201
 
-    console.print(f"  State: {json_mod.dumps(current_state, indent=2)}")
+    console.print(f"  State: {json_mod.dumps(current_state, indent=2)}")  # noqa: T201
 
 
 # ── memoryhub config init / regenerate ───────────────────────────────────────
@@ -952,16 +952,16 @@ _FOCUS_BY_INDEX = {1: "declared", 2: "directory", 3: "first_turn", 4: "auto"}
 def _prompt_choice(prompt_text: str, choices: dict, default: int) -> int:
     """Prompt for an integer in `choices`, defaulting to `default`."""
     while True:
-        console.print(prompt_text)
+        console.print(prompt_text)  # noqa: T201
         raw = typer.prompt(f"Choice [{default}]", default=str(default), show_default=False)
         try:
             value = int(raw)
         except ValueError:
-            err_console.print(f"[red]Not a number: {raw}[/red]")
+            err_console.print(f"[red]Not a number: {raw}[/red]")  # noqa: T201
             continue
         if value in choices:
             return value
-        err_console.print(
+        err_console.print(  # noqa: T201
             f"[red]Pick one of: {', '.join(str(k) for k in choices)}[/red]"
         )
 
@@ -999,7 +999,7 @@ def config_init(
     """Walk through project setup and write `.memoryhub.yaml` + the
     generated `.claude/rules/memoryhub-loading.md` rule file."""
     project_dir = project_dir.resolve()
-    console.print(f"[bold]Configuring MemoryHub for[/bold] {project_dir}\n")
+    console.print(f"[bold]Configuring MemoryHub for[/bold] {project_dir}\n")  # noqa: T201
 
     if non_interactive:
         shape: SessionShape = "focused"
@@ -1027,14 +1027,14 @@ def config_init(
             keep_contradictions = True
         else:
             blurb = _CONTRADICTION_BLURBS.get(shape, _CONTRADICTION_BLURBS["focused"])
-            console.print(f"\n{blurb}\n")
+            console.print(f"\n{blurb}\n")  # noqa: T201
             keep_contradictions = typer.confirm(
                 "Enable cross-domain contradiction detection?",
                 default=False,
             )
 
         # ── Campaign enrollment ──
-        console.print(
+        console.print(  # noqa: T201
             "\n[bold]Campaign enrollment[/bold]\n"
             "  Campaigns enable cross-project knowledge sharing. If this\n"
             "  project is part of a coordinated effort (e.g., a modernization\n"
@@ -1078,14 +1078,14 @@ def config_init(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"\n[green]Wrote {result.yaml_path}[/green]")
-    console.print(f"[green]Wrote {result.rule_path}[/green]")
+    console.print(f"\n[green]Wrote {result.yaml_path}[/green]")  # noqa: T201
+    console.print(f"[green]Wrote {result.rule_path}[/green]")  # noqa: T201
     if result.hook_path:
-        console.print(f"[green]Wrote {result.hook_path}[/green]")
+        console.print(f"[green]Wrote {result.hook_path}[/green]")  # noqa: T201
     if result.settings_path:
-        console.print(f"[green]Updated {result.settings_path}[/green]")
+        console.print(f"[green]Updated {result.settings_path}[/green]")  # noqa: T201
     if result.legacy_backup is not None:
-        console.print(
+        console.print(  # noqa: T201
             f"[yellow]Backed up legacy rule to {result.legacy_backup}.[/yellow]\n"
             f"Review and delete the .bak when you're satisfied with the new rule."
         )
@@ -1096,23 +1096,23 @@ def config_init(
         mode_explanation = f"mode={mode_label} + {pattern}"
     else:
         mode_explanation = f"mode={mode_label}"
-    console.print("\n[bold]Summary[/bold]")
-    console.print(f"  Session shape: {shape} ({mode_explanation})")
-    console.print(f"  Loading: {pattern}")
-    console.print(f"  Focus source: {focus_source}")
+    console.print("\n[bold]Summary[/bold]")  # noqa: T201
+    console.print(f"  Session shape: {shape} ({mode_explanation})")  # noqa: T201
+    console.print(f"  Loading: {pattern}")  # noqa: T201
+    console.print(f"  Focus source: {focus_source}")  # noqa: T201
     cross = "on" if keep_contradictions else "off"
-    console.print(f"  Cross-domain contradictions: {cross}")
+    console.print(f"  Cross-domain contradictions: {cross}")  # noqa: T201
     if campaigns:
-        console.print(f"  Campaigns: {', '.join(campaigns)}")
+        console.print(f"  Campaigns: {', '.join(campaigns)}")  # noqa: T201
     if project:
-        console.print(f"  Project: {project}")
+        console.print(f"  Project: {project}")  # noqa: T201
 
     # ── #153: API key check ──
     api_key_path = Path.home() / ".config" / "memoryhub" / "api-key"
     if api_key_path.exists():
-        console.print(f"\n[green]API key found at {api_key_path}[/green]")
+        console.print(f"\n[green]API key found at {api_key_path}[/green]")  # noqa: T201
     else:
-        console.print(
+        console.print(  # noqa: T201
             f"\n[yellow]Warning:[/yellow] No API key at {api_key_path}\n"
             "  Create this file with your MemoryHub API key before using\n"
             "  the agent. Ask your administrator for a key."
@@ -1122,19 +1122,19 @@ def config_init(
     existing_config = load_config()
     existing_url = existing_config.get("url", "")
     if existing_url:
-        console.print(f"[green]Server URL configured:[/green] {existing_url}")
+        console.print(f"[green]Server URL configured:[/green] {existing_url}")  # noqa: T201
     elif non_interactive:
         env_url = get_server_url()
         if env_url:
-            console.print(f"[green]Server URL (from env):[/green] {env_url}")
+            console.print(f"[green]Server URL (from env):[/green] {env_url}")  # noqa: T201
         else:
-            console.print(
+            console.print(  # noqa: T201
                 "[yellow]Warning:[/yellow] No server URL configured.\n"
                 "  Set MEMORYHUB_URL or add \"url\" to"
                 " ~/.config/memoryhub/config.json."
             )
     else:
-        console.print(
+        console.print(  # noqa: T201
             "\n[yellow]Warning:[/yellow] No server URL configured.\n"
             "  The SessionStart hook and CLI commands need the MemoryHub\n"
             "  server URL. Set MEMORYHUB_URL env var or enter it now."
@@ -1147,7 +1147,7 @@ def config_init(
         if url_input.strip():
             existing_config["url"] = url_input.strip()
             save_config(existing_config)
-            console.print(
+            console.print(  # noqa: T201
                 "[green]URL saved to ~/.config/memoryhub/config.json[/green]"
             )
 
@@ -1187,9 +1187,9 @@ def config_regenerate(
         handle_error("invalid_config", str(exc), output, EXIT_CLIENT_ERROR)
 
     result = rewrite_rule_file(config, project_dir)
-    console.print(f"[green]Regenerated {result.rule_path}[/green]")
+    console.print(f"[green]Regenerated {result.rule_path}[/green]")  # noqa: T201
     if result.legacy_backup is not None:
-        console.print(
+        console.print(  # noqa: T201
             f"[yellow]Backed up legacy rule to {result.legacy_backup}.[/yellow]"
         )
 
@@ -1228,7 +1228,7 @@ def graph_relate(
     if output == OutputFormat.quiet:
         return
 
-    console.print(
+    console.print(  # noqa: T201
         f"[green]Relationship created:[/green] "
         f"{source_id[:12]} --[{relationship_type}]--> {target_id[:12]}"
     )
@@ -1273,7 +1273,7 @@ def graph_list(
         return
 
     if not result.relationships:
-        console.print("[dim]No relationships found.[/dim]")
+        console.print("[dim]No relationships found.[/dim]")  # noqa: T201
         return
 
     table = Table(title=f"Relationships: {node_id[:12]}...")
@@ -1292,7 +1292,7 @@ def graph_list(
         created = str(rel.created_at)[:19] if getattr(rel, "created_at", None) else "-"
         table.add_row(dir_arrow, related, rel.relationship_type, created)
 
-    console.print(table)
+    console.print(table)  # noqa: T201
 
 
 @graph_app.command("similar")
@@ -1331,7 +1331,7 @@ def graph_similar(
         return
 
     if not results:
-        console.print("[dim]No similar memories found.[/dim]")
+        console.print("[dim]No similar memories found.[/dim]")  # noqa: T201
         return
 
     table = Table(title=f"Similar to: {memory_id[:12]}...")
@@ -1349,7 +1349,7 @@ def graph_similar(
             (mem.stub or mem.content)[:60],
         )
 
-    console.print(table)
+    console.print(table)  # noqa: T201
 
 
 # ── memoryhub curation ────────────────────────────────────────────────────────
@@ -1390,9 +1390,9 @@ def curation_report(
         return
 
     triggered = "Yes" if result.revision_triggered else "No"
-    console.print(f"[green]Contradiction reported for[/green] {memory_id[:12]}")
-    console.print(f"  Count: {result.contradiction_count} / {result.threshold} threshold")
-    console.print(f"  Revision triggered: {triggered}")
+    console.print(f"[green]Contradiction reported for[/green] {memory_id[:12]}")  # noqa: T201
+    console.print(f"  Count: {result.contradiction_count} / {result.threshold} threshold")  # noqa: T201
+    console.print(f"  Revision triggered: {triggered}")  # noqa: T201
 
 
 @curation_app.command("resolve")
@@ -1425,7 +1425,7 @@ def curation_resolve(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Contradiction {contradiction_id[:12]} resolved:[/green] {action}")
+    console.print(f"[green]Contradiction {contradiction_id[:12]} resolved:[/green] {action}")  # noqa: T201
 
 
 @curation_app.command("rule")
@@ -1478,8 +1478,8 @@ def curation_rule(
     verb = "updated" if result.updated else "created"
     rule = result.rule
     enabled_label = "enabled" if rule.enabled else "disabled"
-    console.print(f"[green]Rule {verb}:[/green] {name}")
-    console.print(
+    console.print(f"[green]Rule {verb}:[/green] {name}")  # noqa: T201
+    console.print(  # noqa: T201
         f"  Tier: {rule.tier} | Action: {rule.action} | "
         f"Priority: {rule.priority} | {enabled_label}"
     )
@@ -1490,7 +1490,7 @@ def curation_rule(
 
 @project_app.command("list")
 def project_list(
-    filter: str = typer.Option("mine", "--filter", "-f", help='"mine" (default) or "all"'),
+    filter: str = typer.Option("mine", "--filter", "-f", help='"mine" (default) or "all"'),  # noqa: A002
     output: OutputFormat = typer.Option(
         OutputFormat.table, "--output", "-o", help="Output format: table, json, quiet",
     ),
@@ -1512,7 +1512,7 @@ def project_list(
 
     projects = result.get("projects", [])
     if not projects:
-        console.print("[dim]No projects found.[/dim]")
+        console.print("[dim]No projects found.[/dim]")  # noqa: T201
         return
 
     table = Table(title="Projects")
@@ -1532,7 +1532,7 @@ def project_list(
         policy = "invite-only" if invite_only else "open"
         table.add_row(name, description, str(member_count), policy)
 
-    console.print(table)
+    console.print(table)  # noqa: T201
 
 
 @project_app.command("create")
@@ -1563,11 +1563,11 @@ def project_create(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Project created:[/green] {name}")
+    console.print(f"[green]Project created:[/green] {name}")  # noqa: T201
     if description:
-        console.print(f"  Description: {description}")
+        console.print(f"  Description: {description}")  # noqa: T201
     policy = "invite-only" if invite_only else "open"
-    console.print(f"  Policy: {policy}")
+    console.print(f"  Policy: {policy}")  # noqa: T201
 
 
 @project_app.command("add-member")
@@ -1594,7 +1594,7 @@ def project_add_member(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Added[/green] {user_id} to {project_name} as {role}")
+    console.print(f"[green]Added[/green] {user_id} to {project_name} as {role}")  # noqa: T201
 
 
 @project_app.command("remove-member")
@@ -1620,7 +1620,7 @@ def project_remove_member(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Removed[/green] {user_id} from {project_name}")
+    console.print(f"[green]Removed[/green] {user_id} from {project_name}")  # noqa: T201
 
 
 @project_app.command("describe")
@@ -1646,18 +1646,18 @@ def project_describe(
         return
 
     proj = result.get("project", {})
-    console.print(f"[bold]{proj.get('name', project_name)}[/bold]")
+    console.print(f"[bold]{proj.get('name', project_name)}[/bold]")  # noqa: T201
     if proj.get("description"):
-        console.print(f"  {proj['description']}")
+        console.print(f"  {proj['description']}")  # noqa: T201
     policy = "invite-only" if proj.get("invite_only") else "open"
-    console.print(f"  Policy: {policy} | Memories: {proj.get('memory_count', 0)}")
+    console.print(f"  Policy: {policy} | Memories: {proj.get('memory_count', 0)}")  # noqa: T201
     if proj.get("created_by"):
         created = str(proj.get("created_at", ""))[:19]
-        console.print(f"  Created by {proj['created_by']} on {created}")
+        console.print(f"  Created by {proj['created_by']} on {created}")  # noqa: T201
 
     members = result.get("members", [])
     if members:
-        console.print()
+        console.print()  # noqa: T201
         table = Table(title="Members")
         table.add_column("User", style="bold")
         table.add_column("Role", style="cyan")
@@ -1665,9 +1665,9 @@ def project_describe(
         for m in members:
             joined = str(m.get("joined_at", ""))[:19] if m.get("joined_at") else "-"
             table.add_row(m.get("user_id", ""), m.get("role", ""), joined)
-        console.print(table)
+        console.print(table)  # noqa: T201
     else:
-        console.print("\n[dim]No members.[/dim]")
+        console.print("\n[dim]No members.[/dim]")  # noqa: T201
 
 
 # ── memoryhub session ─────────────────────────────────────────────────────────
@@ -1703,10 +1703,10 @@ def session_status(
         for p in result.get("projects", [])
     ]
 
-    console.print(f"Session: {user_id} ({name})")
-    console.print(f"  Scopes: {', '.join(scopes) if scopes else '-'}")
-    console.print(f"  Expires: {expires_at}")
-    console.print(f"  Projects: {', '.join(projects) if projects else '-'}")
+    console.print(f"Session: {user_id} ({name})")  # noqa: T201
+    console.print(f"  Scopes: {', '.join(scopes) if scopes else '-'}")  # noqa: T201
+    console.print(f"  Expires: {expires_at}")  # noqa: T201
+    console.print(f"  Projects: {', '.join(projects) if projects else '-'}")  # noqa: T201
 
 
 @session_app.command("focus")
@@ -1732,7 +1732,7 @@ def session_focus(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"Focus set: {focus_text} (project: {project})")
+    console.print(f"Focus set: {focus_text} (project: {project})")  # noqa: T201
 
 
 @session_app.command("focus-history")
@@ -1763,7 +1763,7 @@ def session_focus_history(
     total = result.get("total_sessions", 0)
 
     if not histogram:
-        console.print("[dim]No focus history found.[/dim]")
+        console.print("[dim]No focus history found.[/dim]")  # noqa: T201
     else:
         table = Table(title=f"Focus History: {project}")
         table.add_column("Focus", style="cyan")
@@ -1772,9 +1772,9 @@ def session_focus_history(
         for entry in histogram:
             table.add_row(entry.get("focus", "-"), str(entry.get("count", 0)))
 
-        console.print(table)
+        console.print(table)  # noqa: T201
 
-    console.print(f"[dim]Total sessions: {total}[/dim]")
+    console.print(f"[dim]Total sessions: {total}[/dim]")  # noqa: T201
 
 
 # ── Entity management commands ─────────────────────────────────────────────────
@@ -1821,7 +1821,7 @@ def entity_list(
         return
 
     if not result.entities:
-        console.print("[dim]No entities found.[/dim]")
+        console.print("[dim]No entities found.[/dim]")  # noqa: T201
         return
 
     table = Table(title=f"Entities ({result.total} total)")
@@ -1841,10 +1841,10 @@ def entity_list(
             ent.id,
         )
 
-    console.print(table)
+    console.print(table)  # noqa: T201
     if result.has_more:
         shown_range = f"{result.offset + 1}-{result.offset + len(result.entities)}"
-        console.print(
+        console.print(  # noqa: T201
             f"[dim]Showing {shown_range} of {result.total}. Use --offset to paginate.[/dim]"
         )
 
@@ -1880,17 +1880,17 @@ def entity_merge(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Merged:[/green] {result.message}")
+    console.print(f"[green]Merged:[/green] {result.message}")  # noqa: T201
     surviving = result.surviving_entity
     ent_content = surviving.get("content", "?")
     ent_id = surviving.get("id", "?")
-    console.print(f"  Surviving entity: {ent_content} ({ent_id})")
-    console.print(f"  Reassigned mentions: {result.reassigned_mentions}")
+    console.print(f"  Surviving entity: {ent_content} ({ent_id})")  # noqa: T201
+    console.print(f"  Reassigned mentions: {result.reassigned_mentions}")  # noqa: T201
     if result.skipped_duplicates > 0:
-        console.print(f"  Skipped duplicates: {result.skipped_duplicates}")
+        console.print(f"  Skipped duplicates: {result.skipped_duplicates}")  # noqa: T201
     aliases = surviving.get("aliases", [])
     if aliases:
-        console.print(f"  Aliases: {', '.join(aliases)}")
+        console.print(f"  Aliases: {', '.join(aliases)}")  # noqa: T201
 
 
 @entity_app.command("rename")
@@ -1926,12 +1926,12 @@ def entity_rename(
 
     entity = result.entity
     new_content = entity.get("content", new_name)
-    console.print(f"[green]Renamed:[/green] '{result.old_name}' -> '{new_content}'")
-    console.print(f"  Entity ID: {entity.get('id', entity_id)}")
-    console.print(f"  Type: {entity.get('entity_type', '?')}")
+    console.print(f"[green]Renamed:[/green] '{result.old_name}' -> '{new_content}'")  # noqa: T201
+    console.print(f"  Entity ID: {entity.get('id', entity_id)}")  # noqa: T201
+    console.print(f"  Type: {entity.get('entity_type', '?')}")  # noqa: T201
     aliases = entity.get("aliases", [])
     if aliases:
-        console.print(f"  Aliases: {', '.join(aliases)}")
+        console.print(f"  Aliases: {', '.join(aliases)}")  # noqa: T201
 
 
 # ── memoryhub thread ──────────────────────────────────────────────────────────
@@ -1960,11 +1960,11 @@ def thread_create(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Thread created:[/green] {result.id}")
-    console.print(f"  Scope: {result.scope}")
+    console.print(f"[green]Thread created:[/green] {result.id}")  # noqa: T201
+    console.print(f"  Scope: {result.scope}")  # noqa: T201
     if result.title:
-        console.print(f"  Title: {result.title}")
-    console.print(f"  Status: {result.status}")
+        console.print(f"  Title: {result.title}")  # noqa: T201
+    console.print(f"  Status: {result.status}")  # noqa: T201
 
 
 @thread_app.command("append")
@@ -1991,10 +1991,10 @@ def thread_append(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Message appended:[/green] {result.id}")
-    console.print(f"  Thread: {result.thread_id}")
-    console.print(f"  Role: {result.role}")
-    console.print(f"  Sequence: {result.sequence_number}")
+    console.print(f"[green]Message appended:[/green] {result.id}")  # noqa: T201
+    console.print(f"  Thread: {result.thread_id}")  # noqa: T201
+    console.print(f"  Role: {result.role}")  # noqa: T201
+    console.print(f"  Sequence: {result.sequence_number}")  # noqa: T201
 
 
 @thread_app.command("get")
@@ -2020,17 +2020,17 @@ def thread_get(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[bold]Thread:[/bold] {result.thread.id}")
-    console.print(f"  Scope: {result.thread.scope} | Status: {result.thread.status}")
+    console.print(f"[bold]Thread:[/bold] {result.thread.id}")  # noqa: T201
+    console.print(f"  Scope: {result.thread.scope} | Status: {result.thread.status}")  # noqa: T201
     if result.thread.title:
-        console.print(f"  Title: {result.thread.title}")
-    console.print(f"  Messages: {result.total_messages}")
+        console.print(f"  Title: {result.thread.title}")  # noqa: T201
+    console.print(f"  Messages: {result.total_messages}")  # noqa: T201
 
     if not result.messages:
-        console.print("\n[dim]No messages.[/dim]")
+        console.print("\n[dim]No messages.[/dim]")  # noqa: T201
         return
 
-    console.print()
+    console.print()  # noqa: T201
     table = Table(title="Messages")
     table.add_column("Seq", justify="right")
     table.add_column("Role", style="cyan")
@@ -2047,7 +2047,7 @@ def thread_get(
             created,
         )
 
-    console.print(table)
+    console.print(table)  # noqa: T201
 
 
 @thread_app.command("list")
@@ -2075,7 +2075,7 @@ def thread_list(
         return
 
     if not result.threads:
-        console.print("[dim]No threads found.[/dim]")
+        console.print("[dim]No threads found.[/dim]")  # noqa: T201
         return
 
     table = Table(title="Threads")
@@ -2096,9 +2096,9 @@ def thread_list(
             created,
         )
 
-    console.print(table)
+    console.print(table)  # noqa: T201
     if result.total > len(result.threads):
-        console.print(f"[dim]Showing {len(result.threads)} of {result.total}[/dim]")
+        console.print(f"[dim]Showing {len(result.threads)} of {result.total}[/dim]")  # noqa: T201
 
 
 @thread_app.command("archive")
@@ -2123,8 +2123,8 @@ def thread_archive(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Thread archived:[/green] {result.id}")
-    console.print(f"  Status: {result.status}")
+    console.print(f"[green]Thread archived:[/green] {result.id}")  # noqa: T201
+    console.print(f"  Status: {result.status}")  # noqa: T201
 
 
 @thread_app.command("extract")
@@ -2150,12 +2150,12 @@ def thread_extract(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Extraction complete:[/green] {result.thread_id}")
-    console.print(f"  Memories created: {result.memories_created}")
+    console.print(f"[green]Extraction complete:[/green] {result.thread_id}")  # noqa: T201
+    console.print(f"  Memories created: {result.memories_created}")  # noqa: T201
     if result.memories:
-        console.print("\n[bold]Extracted memories:[/bold]")
+        console.print("\n[bold]Extracted memories:[/bold]")  # noqa: T201
         for mem in result.memories:
-            console.print(f"  - {mem.id[:12]}... | {(mem.stub or mem.content)[:60]}")
+            console.print(f"  - {mem.id[:12]}... | {(mem.stub or mem.content)[:60]}")  # noqa: T201
 
 
 @thread_app.command("fork")
@@ -2184,11 +2184,11 @@ def thread_fork(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Thread forked:[/green] {result.id}")
-    console.print(f"  Parent: {result.parent_thread_id}")
-    console.print(f"  Fork point: sequence {result.fork_point_sequence}")
+    console.print(f"[green]Thread forked:[/green] {result.id}")  # noqa: T201
+    console.print(f"  Parent: {result.parent_thread_id}")  # noqa: T201
+    console.print(f"  Fork point: sequence {result.fork_point_sequence}")  # noqa: T201
     if result.title:
-        console.print(f"  Title: {result.title}")
+        console.print(f"  Title: {result.title}")  # noqa: T201
 
 
 @thread_app.command("share")
@@ -2215,9 +2215,9 @@ def thread_share(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Thread shared:[/green] {result.thread_id}")
-    console.print(f"  Grantee: {result.grantee_id}")
-    console.print(f"  Access: {result.access_level}")
+    console.print(f"[green]Thread shared:[/green] {result.thread_id}")  # noqa: T201
+    console.print(f"  Grantee: {result.grantee_id}")  # noqa: T201
+    console.print(f"  Access: {result.access_level}")  # noqa: T201
 
 
 @thread_app.command("delete")
@@ -2245,11 +2245,11 @@ def thread_delete(
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"[green]Thread deleted:[/green] {result.id}")
+    console.print(f"[green]Thread deleted:[/green] {result.id}")  # noqa: T201
     if result.messages_deleted:
-        console.print(f"  Messages deleted: {result.messages_deleted}")
+        console.print(f"  Messages deleted: {result.messages_deleted}")  # noqa: T201
     if result.cascade_mode:
-        console.print(f"  Cascade mode: {result.cascade_mode}")
+        console.print(f"  Cascade mode: {result.cascade_mode}")  # noqa: T201
 
 
 if __name__ == "__main__":

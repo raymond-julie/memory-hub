@@ -5,10 +5,15 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, patch
 
+from memoryhub.exceptions import NotFoundError
+from memoryhub.models import (
+    EntityInfo,
+    ListEntitiesResult,
+    MergeEntitiesResult,
+    RenameEntityResult,
+)
 from typer.testing import CliRunner
 
-from memoryhub.exceptions import NotFoundError, ValidationError
-from memoryhub.models import ListEntitiesResult, EntityInfo, MergeEntitiesResult, RenameEntityResult
 from memoryhub_cli.main import app
 
 runner = CliRunner()

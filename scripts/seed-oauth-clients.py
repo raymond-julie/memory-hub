@@ -56,8 +56,8 @@ def _load_clients() -> list[dict]:
     if default.exists():
         return json.loads(default.read_text())
 
-    print("ERROR: No client data found.")
-    print("  Set SEED_CLIENTS_JSON env var, pass a JSON file path, or create scripts/seed-clients.json")
+    print("ERROR: No client data found.")  # noqa: T201
+    print("  Set SEED_CLIENTS_JSON env var, pass a JSON file path, or create scripts/seed-clients.json")  # noqa: T201
     sys.exit(1)
 
 
@@ -74,7 +74,7 @@ async def seed_clients():
                 {"cid": client["client_id"]},
             )
             if result.fetchone():
-                print(f"  skip: {client['client_id']} (already exists)")
+                print(f"  skip: {client['client_id']} (already exists)")  # noqa: T201
                 continue
 
             secret_hash = bcrypt.hashpw(
@@ -101,12 +101,12 @@ async def seed_clients():
                     "scopes": scopes_json,
                 },
             )
-            print(f"  created: {client['client_id']} ({client['identity_type']})")
+            print(f"  created: {client['client_id']} ({client['identity_type']})")  # noqa: T201
 
     await engine.dispose()
-    print("\nDone.")
+    print("\nDone.")  # noqa: T201
 
 
 if __name__ == "__main__":
-    print("Seeding OAuth clients...")
+    print("Seeding OAuth clients...")  # noqa: T201
     asyncio.run(seed_clients())

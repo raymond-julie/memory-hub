@@ -8,11 +8,25 @@ from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from pydantic import Field, ValidationError
 
+from memoryhub_core.models.schemas import MemoryNodeCreate
+from memoryhub_core.services.campaign import get_campaigns_for_project
+from memoryhub_core.services.exceptions import (
+    EmbeddingContentTooLargeError,
+    EmbeddingServiceError,
+    EmbeddingServiceUnavailableError,
+    MemoryAccessDeniedError,
+    MemoryNotFoundError,
+    ProjectInviteOnlyError,
+)
+from memoryhub_core.services.memory import create_memory
+from memoryhub_core.services.project import ensure_project_membership
+from memoryhub_core.services.push_broadcast import build_uri_only_notification
+from memoryhub_core.services.role import get_roles_for_user
 from src.core.app import mcp
 from src.core.authz import (
-    AuthenticationError,
     PROJECT_ISOLATION_ENABLED,
     ROLE_ISOLATION_ENABLED,
+    AuthenticationError,
     authorize_write,
     get_claims_from_context,
     get_tenant_filter,
@@ -24,21 +38,6 @@ from src.tools._deps import (
     release_db_session,
 )
 from src.tools._push_helpers import broadcast_after_write
-
-from memoryhub_core.models.schemas import MemoryNodeCreate
-from memoryhub_core.services.campaign import get_campaigns_for_project
-from memoryhub_core.services.exceptions import (
-    EmbeddingContentTooLargeError,
-    EmbeddingServiceError,
-    EmbeddingServiceUnavailableError,
-    MemoryAccessDeniedError,
-    MemoryNotFoundError,
-    ProjectInviteOnlyError,
-)
-from memoryhub_core.services.project import ensure_project_membership
-from memoryhub_core.services.role import get_roles_for_user
-from memoryhub_core.services.memory import create_memory
-from memoryhub_core.services.push_broadcast import build_uri_only_notification
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +301,7 @@ async def write_memory(
         except ValueError:
             raise ToolError(
                 f"Invalid parent_id format: '{parent_id}'. Must be a valid UUID."
-            )
+            ) from None
 
     # Build the create schema with validation
     try:
@@ -404,7 +403,7 @@ async def write_memory(
         raise ToolError(
             f"Parent memory {parent_id} not found. Check the parent_id — "
             "it may have been deleted or you may not have access to it."
-        )
+        ) from None
     except MemoryAccessDeniedError as exc:
         raise ToolError(f"Access denied: {exc.reason}") from exc
     except EmbeddingContentTooLargeError as exc:

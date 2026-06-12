@@ -198,16 +198,16 @@ async def process_one(
             extractor_str = "+".join(sorted(extractors)) if extractors else "none"
 
             stub = (row["stub"] or row["content"][:50] or "(empty)")[:60]
-            print(f"  [{index}/{total}] {short_id}... {count} entities ({extractor_str}) -- {stub}")
+            print(f"  [{index}/{total}] {short_id}... {count} entities ({extractor_str}) -- {stub}")  # noqa: T201
 
             if verbose and result.get("entities"):
                 for e in result["entities"]:
-                    print(f"         {e['type']:12s} {e['name']} ({e['extractor']})")
+                    print(f"         {e['type']:12s} {e['name']} ({e['extractor']})")  # noqa: T201
 
             return {"status": "ok", "count": count}
 
         except Exception as exc:
-            print(f"  [{index}/{total}] {short_id}... FAILED: {exc}")
+            print(f"  [{index}/{total}] {short_id}... FAILED: {exc}")  # noqa: T201
             try:
                 async with session_factory() as session:
                     await update_extraction_status(session, memory_id, "failed")
@@ -231,18 +231,18 @@ async def main(args: argparse.Namespace) -> int:
         already = await count_already_extracted(session)
         candidates = await count_candidates(session, args.include_failed)
 
-    print(f"Database: {settings.host}:{settings.port}/{settings.name}")
-    print(f"Total active memories: {total}")
-    print(f"Already extracted: {already}")
-    print(f"Backfill candidates: {candidates}")
+    print(f"Database: {settings.host}:{settings.port}/{settings.name}")  # noqa: T201
+    print(f"Total active memories: {total}")  # noqa: T201
+    print(f"Already extracted: {already}")  # noqa: T201
+    print(f"Backfill candidates: {candidates}")  # noqa: T201
     if llm_url:
-        print(f"LLM endpoint: {llm_url} ({llm_model})")
+        print(f"LLM endpoint: {llm_url} ({llm_model})")  # noqa: T201
     else:
-        print("LLM endpoint: not configured (Stage 3 will be skipped)")
-    print()
+        print("LLM endpoint: not configured (Stage 3 will be skipped)")  # noqa: T201
+    print()  # noqa: T201
 
     if candidates == 0:
-        print("Nothing to backfill.")
+        print("Nothing to backfill.")  # noqa: T201
         await engine.dispose()
         return 0
 
@@ -250,18 +250,18 @@ async def main(args: argparse.Namespace) -> int:
         rows = await scan(session, args.include_failed, args.limit)
 
     if not args.execute:
-        print(f"Candidates (showing {len(rows)}):")
+        print(f"Candidates (showing {len(rows)}):")  # noqa: T201
         for row in rows:
             stub = (row["stub"] or "(no stub)")[:70]
             created = row["created_at"].isoformat() if row["created_at"] else "?"
-            print(f"  [{row['owner_id']}] {stub}  ({created})")
-        print()
-        print("Dry run -- no changes made. Pass --execute to process.")
+            print(f"  [{row['owner_id']}] {stub}  ({created})")  # noqa: T201
+        print()  # noqa: T201
+        print("Dry run -- no changes made. Pass --execute to process.")  # noqa: T201
         await engine.dispose()
         return 0
 
-    print(f"Processing {len(rows)} memories (concurrency={args.concurrency})...")
-    print()
+    print(f"Processing {len(rows)} memories (concurrency={args.concurrency})...")  # noqa: T201
+    print()  # noqa: T201
 
     embedding_service = MockEmbeddingService()
     semaphore = asyncio.Semaphore(args.concurrency)
@@ -281,12 +281,12 @@ async def main(args: argparse.Namespace) -> int:
     failed = sum(1 for r in results if r["status"] == "failed")
     total_entities = sum(r["count"] for r in results)
 
-    print()
-    print(f"Done in {elapsed:.1f}s")
-    print(f"  Processed: {len(results)}")
-    print(f"  Succeeded: {succeeded}")
-    print(f"  Failed:    {failed}")
-    print(f"  Entities:  {total_entities}")
+    print()  # noqa: T201
+    print(f"Done in {elapsed:.1f}s")  # noqa: T201
+    print(f"  Processed: {len(results)}")  # noqa: T201
+    print(f"  Succeeded: {succeeded}")  # noqa: T201
+    print(f"  Failed:    {failed}")  # noqa: T201
+    print(f"  Entities:  {total_entities}")  # noqa: T201
 
     await engine.dispose()
     return 1 if failed > 0 else 0

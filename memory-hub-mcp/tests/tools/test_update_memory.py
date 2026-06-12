@@ -1,9 +1,9 @@
 """Tests for update_memory tool."""
 
 import inspect
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 from src.tools.update_memory import update_memory
 

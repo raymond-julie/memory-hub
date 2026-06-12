@@ -14,8 +14,6 @@ from pydantic import Field
 
 from memoryhub_core.models.schemas import MemoryNodeUpdate
 from memoryhub_core.services.campaign import get_campaigns_for_project
-from memoryhub_core.services.project import get_projects_for_user
-from memoryhub_core.services.role import get_roles_for_user
 from memoryhub_core.services.exceptions import (
     EmbeddingContentTooLargeError,
     EmbeddingServiceError,
@@ -26,7 +24,9 @@ from memoryhub_core.services.exceptions import (
 )
 from memoryhub_core.services.memory import read_memory as _read_memory
 from memoryhub_core.services.memory import update_memory as svc_update_memory
+from memoryhub_core.services.project import get_projects_for_user
 from memoryhub_core.services.push_broadcast import build_uri_only_notification
+from memoryhub_core.services.role import get_roles_for_user
 from src.core.app import mcp
 from src.core.authz import (
     AuthenticationError,
@@ -108,7 +108,7 @@ async def update_memory(
     except ValueError:
         raise ToolError(
             f"Invalid memory_id format: '{memory_id}'. Expected a UUID string."
-        )
+        ) from None
 
     update_data = MemoryNodeUpdate(
         content=content,
@@ -120,7 +120,7 @@ async def update_memory(
     try:
         claims = get_claims_from_context()
     except AuthenticationError as exc:
-        raise ToolError(str(exc))
+        raise ToolError(str(exc)) from None
     tenant = get_tenant_filter(claims)
 
     session, gen = await get_db_session()
@@ -192,14 +192,14 @@ async def update_memory(
         return result
 
     except MemoryNotFoundError:
-        raise ToolError(f"Memory {memory_id} not found.")
+        raise ToolError(f"Memory {memory_id} not found.") from None
     except MemoryNotCurrentError as exc:
         raise ToolError(
             f"Memory {memory_id} is not current. "
             f"Current version is {exc.current_id}. Update that instead."
-        )
+        ) from None
     except MemoryAccessDeniedError as exc:
-        raise ToolError(f"Access denied: {exc.reason}")
+        raise ToolError(f"Access denied: {exc.reason}") from None
     except EmbeddingContentTooLargeError as exc:
         raise ToolError(
             f"Invalid content size: {exc.content_length} characters exceeds the "

@@ -5,6 +5,7 @@ The graduate action converts experiential memories to knowledge memories.
 """
 
 import uuid
+from datetime import UTC
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -18,7 +19,7 @@ class FakeMemoryNode:
 
     def __init__(
         self,
-        id: uuid.UUID,
+        id: uuid.UUID,  # noqa: A002
         content: str,
         scope: str = "user",
         scope_id: str | None = None,
@@ -35,8 +36,8 @@ class FakeMemoryNode:
         self.weight = weight
         self.metadata = metadata or {}
         # Use a fake datetime if not provided
-        from datetime import datetime, timezone
-        self.created_at = created_at or datetime.now(timezone.utc)
+        from datetime import datetime
+        self.created_at = created_at or datetime.now(UTC)
 
 
 # ── Required parameter validation ──────────────────────────────────────────

@@ -1272,7 +1272,7 @@ class MemoryHubClient:
     async def list_projects(
         self,
         *,
-        filter: str = "mine",
+        filter: str = "mine",  # noqa: A002
     ) -> dict[str, Any]:
         """List projects.
 

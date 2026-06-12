@@ -156,13 +156,13 @@ async def main(args: argparse.Namespace) -> int:
         total = await count_total(session)
         matches = await scan(session, verbose=args.verbose)
 
-        print(f"Database: {settings.host}:{settings.port}/{settings.name}")
-        print(f"Total active memories: {total}")
-        print(f"Test data found: {len(matches)}")
-        print()
+        print(f"Database: {settings.host}:{settings.port}/{settings.name}")  # noqa: T201
+        print(f"Total active memories: {total}")  # noqa: T201
+        print(f"Test data found: {len(matches)}")  # noqa: T201
+        print()  # noqa: T201
 
         if not matches:
-            print("No test data to clean up.")
+            print("No test data to clean up.")  # noqa: T201
             await engine.dispose()
             return 0
 
@@ -170,17 +170,17 @@ async def main(args: argparse.Namespace) -> int:
             owner = entry["owner_id"]
             stub = entry["stub"]
             created = entry["created_at"]
-            print(f"  [{owner}] {stub}  ({created})")
+            print(f"  [{owner}] {stub}  ({created})")  # noqa: T201
             if args.verbose and "content" in entry:
-                print(f"    content: {entry['content']}")
+                print(f"    content: {entry['content']}")  # noqa: T201
 
-        print()
+        print()  # noqa: T201
 
         if args.execute:
             count = await soft_delete(session)
-            print(f"Soft-deleted {count} rows.")
+            print(f"Soft-deleted {count} rows.")  # noqa: T201
         else:
-            print("Dry run — no changes made. Pass --execute to delete.")
+            print("Dry run — no changes made. Pass --execute to delete.")  # noqa: T201
 
     await engine.dispose()
     return 0

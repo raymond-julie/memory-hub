@@ -32,7 +32,7 @@ test_memory_ids = []
 def load_api_key() -> str:
     """Load API key from ~/.config/memoryhub/api-key"""
     if not API_KEY_PATH.exists():
-        print(f"❌ API key not found at {API_KEY_PATH}")
+        print(f"❌ API key not found at {API_KEY_PATH}")  # noqa: T201
         sys.exit(1)
     return API_KEY_PATH.read_text().strip()
 
@@ -50,10 +50,10 @@ async def run_tests():
             # Test 1: Register session (already done implicitly in __aenter__)
             try:
                 session = await client.get_session()
-                print(f"✅ Test 1: register_session - user: {session.get('user_id')}")
+                print(f"✅ Test 1: register_session - user: {session.get('user_id')}")  # noqa: T201
                 passed += 1
             except Exception as e:
-                print(f"❌ Test 1: register_session - {e}")
+                print(f"❌ Test 1: register_session - {e}")  # noqa: T201
                 failed += 1
                 return passed, failed
 
@@ -69,14 +69,14 @@ async def run_tests():
                 if write_result.memory:
                     memory_id = write_result.memory.id
                     test_memory_ids.append(memory_id)
-                    print(f"✅ Test 2: write - memory_id: {memory_id}")
+                    print(f"✅ Test 2: write - memory_id: {memory_id}")  # noqa: T201
                     passed += 1
                 else:
-                    print(f"❌ Test 2: write - gated by curation: {write_result.curation.reason}")
+                    print(f"❌ Test 2: write - gated by curation: {write_result.curation.reason}")  # noqa: T201
                     failed += 1
                     return passed, failed
             except Exception as e:
-                print(f"❌ Test 2: write - {e}")
+                print(f"❌ Test 2: write - {e}")  # noqa: T201
                 failed += 1
                 return passed, failed
 
@@ -91,26 +91,26 @@ async def run_tests():
                 )
                 found = any(m.id == memory_id for m in search_result.results)
                 if found:
-                    print(f"✅ Test 3: search - found memory in {len(search_result.results)} results")
+                    print(f"✅ Test 3: search - found memory in {len(search_result.results)} results")  # noqa: T201
                 else:
                     count = len(search_result.results)
-                    print(f"✅ Test 3: search - returned {count} results (not indexed yet -- compilation cache)")
+                    print(f"✅ Test 3: search - returned {count} results (not indexed yet -- compilation cache)")  # noqa: T201
                 passed += 1
             except Exception as e:
-                print(f"❌ Test 3: search - {e}")
+                print(f"❌ Test 3: search - {e}")  # noqa: T201
                 failed += 1
 
             # Test 4: Read the test memory by ID
             try:
                 memory = await client.read(memory_id, project_id=PROJECT_ID)
                 if memory.id == memory_id:
-                    print(f"✅ Test 4: read - content: {memory.content[:50]}...")
+                    print(f"✅ Test 4: read - content: {memory.content[:50]}...")  # noqa: T201
                     passed += 1
                 else:
-                    print("❌ Test 4: read - wrong memory returned")
+                    print("❌ Test 4: read - wrong memory returned")  # noqa: T201
                     failed += 1
             except Exception as e:
-                print(f"❌ Test 4: read - {e}")
+                print(f"❌ Test 4: read - {e}")  # noqa: T201
                 failed += 1
 
             # Test 5: Promote the test memory
@@ -122,10 +122,10 @@ async def run_tests():
                     project_id=PROJECT_ID,
                 )
                 test_memory_ids.append(promoted.id)
-                print(f"✅ Test 5: promote - promoted to project scope: {promoted.id}")
+                print(f"✅ Test 5: promote - promoted to project scope: {promoted.id}")  # noqa: T201
                 passed += 1
             except Exception as e:
-                print(f"❌ Test 5: promote - {e}")
+                print(f"❌ Test 5: promote - {e}")  # noqa: T201
                 failed += 1
 
             # Test 6: Checkpoint write and read
@@ -136,7 +136,7 @@ async def run_tests():
                     state={"test_run": "smoke-test", "memory_id": memory_id},
                     scope="user",
                 )
-                print(f"✅ Test 6a: checkpoint write - workflow: {checkpoint_write.get('workflow_name')}")
+                print(f"✅ Test 6a: checkpoint write - workflow: {checkpoint_write.get('workflow_name')}")  # noqa: T201
 
                 # Read checkpoint
                 checkpoint_read = await client.checkpoint(
@@ -144,13 +144,13 @@ async def run_tests():
                     scope="user",
                 )
                 if checkpoint_read.get("state", {}).get("memory_id") == memory_id:
-                    print("✅ Test 6b: checkpoint read - state matches")
+                    print("✅ Test 6b: checkpoint read - state matches")  # noqa: T201
                     passed += 1
                 else:
-                    print("❌ Test 6b: checkpoint read - state mismatch")
+                    print("❌ Test 6b: checkpoint read - state mismatch")  # noqa: T201
                     failed += 1
             except Exception as e:
-                print(f"❌ Test 6: checkpoint - {e}")
+                print(f"❌ Test 6: checkpoint - {e}")  # noqa: T201
                 failed += 1
 
             # Test 7: Reconstruct (behavioral memory retrieval)
@@ -158,10 +158,10 @@ async def run_tests():
             try:
                 result = await client._call_action("reconstruct", options={"max_results": 5})
                 # Just verify it doesn't error - we may not have behavioral memories
-                print(f"✅ Test 7: reconstruct - returned {len(result.get('results', []))} behavioral memories")
+                print(f"✅ Test 7: reconstruct - returned {len(result.get('results', []))} behavioral memories")  # noqa: T201
                 passed += 1
             except Exception as e:
-                print(f"❌ Test 7: reconstruct - {e}")
+                print(f"❌ Test 7: reconstruct - {e}")  # noqa: T201
                 failed += 1
 
             # Test 8: List memories
@@ -172,10 +172,10 @@ async def run_tests():
                     max_results=10,
                 )
                 count = len(list_result.get("results", []))
-                print(f"✅ Test 8: list - returned {count} memories")
+                print(f"✅ Test 8: list - returned {count} memories")  # noqa: T201
                 passed += 1
             except Exception as e:
-                print(f"❌ Test 8: list - {e}")
+                print(f"❌ Test 8: list - {e}")  # noqa: T201
                 failed += 1
 
             # Test 9: Extraction pipeline
@@ -211,13 +211,13 @@ async def run_tests():
                 candidate_count = len(extraction_result.candidates)
 
                 if candidate_count > 0:
-                    print(f"✅ Test 9: extraction - extracted {candidate_count} candidates")
+                    print(f"✅ Test 9: extraction - extracted {candidate_count} candidates")  # noqa: T201
                     passed += 1
                 else:
-                    print("❌ Test 9: extraction - no candidates extracted")
+                    print("❌ Test 9: extraction - no candidates extracted")  # noqa: T201
                     failed += 1
             except Exception as e:
-                print(f"❌ Test 9: extraction - {e}")
+                print(f"❌ Test 9: extraction - {e}")  # noqa: T201
                 failed += 1
 
             # Test 10: Export to Obsidian
@@ -232,10 +232,10 @@ async def run_tests():
                         weight_threshold=0.0,
                     )
                     files_written = export_result.get("files_written", 0)
-                    print(f"✅ Test 10: export_obsidian - wrote {files_written} markdown files")
+                    print(f"✅ Test 10: export_obsidian - wrote {files_written} markdown files")  # noqa: T201
                     passed += 1
             except Exception as e:
-                print(f"❌ Test 10: export_obsidian - {e}")
+                print(f"❌ Test 10: export_obsidian - {e}")  # noqa: T201
                 failed += 1
 
             # Test 11: Delete all test memories
@@ -246,39 +246,39 @@ async def run_tests():
                         await client.delete(mid, project_id=PROJECT_ID)
                         deleted_count += 1
                     except Exception as del_err:
-                        print(f"  Warning: Could not delete {mid}: {del_err}")
+                        print(f"  Warning: Could not delete {mid}: {del_err}")  # noqa: T201
 
-                print(f"✅ Test 11: delete - cleaned up {deleted_count}/{len(test_memory_ids)} test memories")
+                print(f"✅ Test 11: delete - cleaned up {deleted_count}/{len(test_memory_ids)} test memories")  # noqa: T201
                 passed += 1
             except Exception as e:
-                print(f"❌ Test 11: delete - {e}")
+                print(f"❌ Test 11: delete - {e}")  # noqa: T201
                 failed += 1
 
     except Exception as e:
-        print(f"❌ Fatal error: {e}")
+        print(f"❌ Fatal error: {e}")  # noqa: T201
         failed += 1
 
     return passed, failed
 
 
 async def main():
-    print("=" * 60)
-    print("MemoryHub SDK v0.9.0 Smoke Test")
-    print("=" * 60)
-    print(f"MCP URL: {MCP_URL}")
-    print(f"Project: {PROJECT_ID}")
-    print("=" * 60)
+    print("=" * 60)  # noqa: T201
+    print("MemoryHub SDK v0.9.0 Smoke Test")  # noqa: T201
+    print("=" * 60)  # noqa: T201
+    print(f"MCP URL: {MCP_URL}")  # noqa: T201
+    print(f"Project: {PROJECT_ID}")  # noqa: T201
+    print("=" * 60)  # noqa: T201
 
     passed, failed = await run_tests()
 
-    print("=" * 60)
-    print(f"Results: {passed} passed, {failed} failed")
-    print("=" * 60)
+    print("=" * 60)  # noqa: T201
+    print(f"Results: {passed} passed, {failed} failed")  # noqa: T201
+    print("=" * 60)  # noqa: T201
 
     if failed > 0:
         sys.exit(1)
     else:
-        print("✅ All tests passed!")
+        print("✅ All tests passed!")  # noqa: T201
         sys.exit(0)
 
 

@@ -216,7 +216,7 @@ class PrometheusClient:
 
 
 def log(msg: str) -> None:
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)  # noqa: T201
 
 
 def _make_user_msg(block: str, question: str) -> str:
@@ -865,12 +865,12 @@ async def main() -> None:
     args = parser.parse_args()
 
     if args.list_scenarios:
-        print("Baseline scenarios (run by default):")
+        print("Baseline scenarios (run by default):")  # noqa: T201
         for s in BASELINE_SCENARIOS:
-            print(f"  {s}")
-        print("\nFollow-up scenarios (run with --scenario <name>):")
+            print(f"  {s}")  # noqa: T201
+        print("\nFollow-up scenarios (run with --scenario <name>):")  # noqa: T201
         for s in FOLLOWUP_SCENARIOS:
-            print(f"  {s}")
+            print(f"  {s}")  # noqa: T201
         return
 
     vllm_url = os.environ["VLLM_URL"]

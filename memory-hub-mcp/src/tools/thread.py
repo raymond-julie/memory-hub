@@ -11,6 +11,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from pydantic import Field
+
 from src.core.app import mcp
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,8 @@ async def thread(
 
 
 async def _dispatch_create(scope, opts, ctx):
+    from memoryhub_core.models.schemas import ConversationThreadCreate
+    from memoryhub_core.services.conversation import create_thread
     from src.core.authz import (
         AuthenticationError,
         authorize_write,
@@ -155,9 +158,6 @@ async def _dispatch_create(scope, opts, ctx):
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, release_db_session
-
-    from memoryhub_core.models.schemas import ConversationThreadCreate
-    from memoryhub_core.services.conversation import create_thread
 
     _require("create", "scope", scope)
 
@@ -193,6 +193,12 @@ async def _dispatch_create(scope, opts, ctx):
 
 
 async def _dispatch_append(thread_id_str, role, content, opts, ctx):
+    from memoryhub_core.models.schemas import ConversationMessageCreate
+    from memoryhub_core.services.conversation import append_message, get_thread, lookup_thread_by_a2a_context
+    from memoryhub_core.services.exceptions import (
+        ThreadNotActiveError,
+        ThreadNotFoundError,
+    )
     from src.core.authz import (
         AuthenticationError,
         authorize_thread_write,
@@ -200,13 +206,6 @@ async def _dispatch_append(thread_id_str, role, content, opts, ctx):
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, get_s3_adapter, release_db_session
-
-    from memoryhub_core.models.schemas import ConversationMessageCreate
-    from memoryhub_core.services.conversation import append_message, get_thread, lookup_thread_by_a2a_context
-    from memoryhub_core.services.exceptions import (
-        ThreadNotActiveError,
-        ThreadNotFoundError,
-    )
 
     _require("append", "role", role)
     _require("append", "content", content)
@@ -283,6 +282,7 @@ async def _dispatch_append(thread_id_str, role, content, opts, ctx):
 
 
 async def _dispatch_get(thread_id_str, opts, ctx):
+    from memoryhub_core.services.conversation import get_thread
     from src.core.authz import (
         AuthenticationError,
         authorize_thread_read,
@@ -290,8 +290,6 @@ async def _dispatch_get(thread_id_str, opts, ctx):
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, get_s3_adapter, release_db_session
-
-    from memoryhub_core.services.conversation import get_thread
 
     _require("get", "thread_id", thread_id_str)
 
@@ -349,14 +347,13 @@ async def _dispatch_get(thread_id_str, opts, ctx):
 
 
 async def _dispatch_list(scope, opts, ctx):
+    from memoryhub_core.services.conversation import list_threads
     from src.core.authz import (
         AuthenticationError,
         get_claims_from_context,
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, release_db_session
-
-    from memoryhub_core.services.conversation import list_threads
 
     try:
         claims = get_claims_from_context()
@@ -385,6 +382,11 @@ async def _dispatch_list(scope, opts, ctx):
 
 
 async def _dispatch_archive(thread_id_str, opts, ctx):
+    from memoryhub_core.services.conversation import archive_thread
+    from memoryhub_core.services.exceptions import (
+        ThreadNotActiveError,
+        ThreadNotFoundError,
+    )
     from src.core.authz import (
         AuthenticationError,
         authorize_thread_admin,
@@ -392,12 +394,6 @@ async def _dispatch_archive(thread_id_str, opts, ctx):
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, release_db_session
-
-    from memoryhub_core.services.conversation import archive_thread
-    from memoryhub_core.services.exceptions import (
-        ThreadNotActiveError,
-        ThreadNotFoundError,
-    )
 
     _require("archive", "thread_id", thread_id_str)
 
@@ -445,6 +441,8 @@ async def _dispatch_archive(thread_id_str, opts, ctx):
 
 
 async def _dispatch_extract(thread_id_str, opts, ctx):
+    from memoryhub_core.services.conversation_extraction import extract_from_thread
+    from memoryhub_core.services.exceptions import ThreadNotFoundError
     from src.core.authz import (
         AuthenticationError,
         authorize_thread_read,
@@ -452,9 +450,6 @@ async def _dispatch_extract(thread_id_str, opts, ctx):
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, get_embedding_service, get_s3_adapter, release_db_session
-
-    from memoryhub_core.services.conversation_extraction import extract_from_thread
-    from memoryhub_core.services.exceptions import ThreadNotFoundError
 
     _require("extract", "thread_id", thread_id_str)
 
@@ -478,7 +473,7 @@ async def _dispatch_extract(thread_id_str, opts, ctx):
     turn_range = None
     if "turn_range" in extract_opts:
         tr = extract_opts["turn_range"]
-        if isinstance(tr, (list, tuple)) and len(tr) == 2:
+        if isinstance(tr, list | tuple) and len(tr) == 2:
             turn_range = (int(tr[0]), int(tr[1]))
         elif isinstance(tr, str) and "-" in tr:
             parts = tr.split("-", 1)
@@ -529,6 +524,8 @@ async def _dispatch_extract(thread_id_str, opts, ctx):
 
 
 async def _dispatch_fork(thread_id_str, opts, ctx):
+    from memoryhub_core.services.conversation import fork_thread
+    from memoryhub_core.services.exceptions import ThreadNotFoundError
     from src.core.authz import (
         AuthenticationError,
         authorize_thread_admin,
@@ -536,9 +533,6 @@ async def _dispatch_fork(thread_id_str, opts, ctx):
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, release_db_session
-
-    from memoryhub_core.services.conversation import fork_thread
-    from memoryhub_core.services.exceptions import ThreadNotFoundError
 
     _require("fork", "thread_id", thread_id_str)
 
@@ -602,6 +596,8 @@ async def _dispatch_fork(thread_id_str, opts, ctx):
 
 
 async def _dispatch_share(thread_id_str, opts, ctx):
+    from memoryhub_core.services.conversation import share_thread
+    from memoryhub_core.services.exceptions import ThreadNotFoundError
     from src.core.authz import (
         AuthenticationError,
         authorize_thread_admin,
@@ -609,9 +605,6 @@ async def _dispatch_share(thread_id_str, opts, ctx):
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, release_db_session
-
-    from memoryhub_core.services.conversation import share_thread
-    from memoryhub_core.services.exceptions import ThreadNotFoundError
 
     _require("share", "thread_id", thread_id_str)
 
@@ -680,6 +673,8 @@ async def _dispatch_share(thread_id_str, opts, ctx):
 
 
 async def _dispatch_delete(thread_id_str, opts, ctx):
+    from memoryhub_core.services.conversation import soft_delete_thread
+    from memoryhub_core.services.exceptions import ThreadNotFoundError
     from src.core.authz import (
         AuthenticationError,
         authorize_thread_admin,
@@ -687,9 +682,6 @@ async def _dispatch_delete(thread_id_str, opts, ctx):
         get_tenant_filter,
     )
     from src.tools._deps import get_db_session, release_db_session
-
-    from memoryhub_core.services.conversation import soft_delete_thread
-    from memoryhub_core.services.exceptions import ThreadNotFoundError
 
     _require("delete", "thread_id", thread_id_str)
 

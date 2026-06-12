@@ -101,7 +101,7 @@ async def manage_project(
             ),
         ),
     ] = False,
-    filter: Annotated[
+    filter: Annotated[  # noqa: A002
         str,
         Field(
             description=(

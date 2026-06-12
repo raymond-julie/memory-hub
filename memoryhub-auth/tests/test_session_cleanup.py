@@ -3,6 +3,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
 from src.models import AuthSession
 from src.session_cleanup import cleanup_expired_sessions
 

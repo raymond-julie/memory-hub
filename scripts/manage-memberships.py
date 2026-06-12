@@ -40,13 +40,13 @@ async def list_projects(engine):
         )
         rows = result.fetchall()
         if not rows:
-            print("  (no project memberships)")
+            print("  (no project memberships)")  # noqa: T201
             return
-        print(f"  {'PROJECT':<25} {'USER':<20} {'ROLE':<10} {'JOINED':<22} {'BY'}")
-        print(f"  {'-'*25} {'-'*20} {'-'*10} {'-'*22} {'-'*15}")
+        print(f"  {'PROJECT':<25} {'USER':<20} {'ROLE':<10} {'JOINED':<22} {'BY'}")  # noqa: T201
+        print(f"  {'-'*25} {'-'*20} {'-'*10} {'-'*22} {'-'*15}")  # noqa: T201
         for r in rows:
             joined = r[3].strftime("%Y-%m-%d %H:%M") if r[3] else ""
-            print(f"  {r[0]:<25} {r[1]:<20} {r[2]:<10} {joined:<22} {r[4]}")
+            print(f"  {r[0]:<25} {r[1]:<20} {r[2]:<10} {joined:<22} {r[4]}")  # noqa: T201
 
 
 async def add_project(engine, project_id: str, user_id: str, role: str, actor: str):
@@ -56,7 +56,7 @@ async def add_project(engine, project_id: str, user_id: str, role: str, actor: s
             {"pid": project_id, "uid": user_id},
         )
         if result.fetchone():
-            print(f"  skip: {user_id} already a member of {project_id}")
+            print(f"  skip: {user_id} already a member of {project_id}")  # noqa: T201
             return
         await conn.execute(
             text("""
@@ -65,7 +65,7 @@ async def add_project(engine, project_id: str, user_id: str, role: str, actor: s
             """),
             {"pid": project_id, "uid": user_id, "role": role, "actor": actor},
         )
-        print(f"  added: {user_id} -> {project_id} (role={role})")
+        print(f"  added: {user_id} -> {project_id} (role={role})")  # noqa: T201
 
 
 async def remove_project(engine, project_id: str, user_id: str):
@@ -75,9 +75,9 @@ async def remove_project(engine, project_id: str, user_id: str):
             {"pid": project_id, "uid": user_id},
         )
         if result.rowcount == 0:
-            print(f"  skip: {user_id} is not a member of {project_id}")
+            print(f"  skip: {user_id} is not a member of {project_id}")  # noqa: T201
         else:
-            print(f"  removed: {user_id} from {project_id}")
+            print(f"  removed: {user_id} from {project_id}")  # noqa: T201
 
 
 async def list_roles(engine):
@@ -90,13 +90,13 @@ async def list_roles(engine):
         )
         rows = result.fetchall()
         if not rows:
-            print("  (no role assignments)")
+            print("  (no role assignments)")  # noqa: T201
             return
-        print(f"  {'ROLE':<25} {'USER':<20} {'TENANT':<15} {'ASSIGNED':<22} {'BY'}")
-        print(f"  {'-'*25} {'-'*20} {'-'*15} {'-'*22} {'-'*15}")
+        print(f"  {'ROLE':<25} {'USER':<20} {'TENANT':<15} {'ASSIGNED':<22} {'BY'}")  # noqa: T201
+        print(f"  {'-'*25} {'-'*20} {'-'*15} {'-'*22} {'-'*15}")  # noqa: T201
         for r in rows:
             assigned = r[3].strftime("%Y-%m-%d %H:%M") if r[3] else ""
-            print(f"  {r[0]:<25} {r[1]:<20} {r[2]:<15} {assigned:<22} {r[4]}")
+            print(f"  {r[0]:<25} {r[1]:<20} {r[2]:<15} {assigned:<22} {r[4]}")  # noqa: T201
 
 
 async def add_role(engine, role_name: str, user_id: str, tenant_id: str, actor: str):
@@ -106,7 +106,7 @@ async def add_role(engine, role_name: str, user_id: str, tenant_id: str, actor: 
             {"uid": user_id, "rn": role_name, "tid": tenant_id},
         )
         if result.fetchone():
-            print(f"  skip: {user_id} already holds role {role_name} in tenant {tenant_id}")
+            print(f"  skip: {user_id} already holds role {role_name} in tenant {tenant_id}")  # noqa: T201
             return
         await conn.execute(
             text("""
@@ -115,7 +115,7 @@ async def add_role(engine, role_name: str, user_id: str, tenant_id: str, actor: 
             """),
             {"uid": user_id, "rn": role_name, "tid": tenant_id, "actor": actor},
         )
-        print(f"  assigned: {user_id} -> {role_name} (tenant={tenant_id})")
+        print(f"  assigned: {user_id} -> {role_name} (tenant={tenant_id})")  # noqa: T201
 
 
 async def remove_role(engine, role_name: str, user_id: str, tenant_id: str):
@@ -125,9 +125,9 @@ async def remove_role(engine, role_name: str, user_id: str, tenant_id: str):
             {"uid": user_id, "rn": role_name, "tid": tenant_id},
         )
         if result.rowcount == 0:
-            print(f"  skip: {user_id} does not hold role {role_name} in tenant {tenant_id}")
+            print(f"  skip: {user_id} does not hold role {role_name} in tenant {tenant_id}")  # noqa: T201
         else:
-            print(f"  removed: {role_name} from {user_id} (tenant={tenant_id})")
+            print(f"  removed: {role_name} from {user_id} (tenant={tenant_id})")  # noqa: T201
 
 
 async def main():

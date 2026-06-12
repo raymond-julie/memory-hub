@@ -1540,7 +1540,7 @@ async def test_search_forwards_raw_results_true(client):
 
 def _make_memory(
     *,
-    id: str = "mem-001",
+    id: str = "mem-001",  # noqa: A002
     content: str = "some content",
     stub: str | None = None,
     result_type: str | None = "full",

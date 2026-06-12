@@ -17,8 +17,6 @@ from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from memoryhub_core.services.campaign import get_campaigns_for_project
-from memoryhub_core.services.project import get_projects_for_user
-from memoryhub_core.services.role import get_roles_for_user
 from memoryhub_core.services.exceptions import (
     MemoryAccessDeniedError,
     MemoryAlreadyDeletedError,
@@ -26,8 +24,9 @@ from memoryhub_core.services.exceptions import (
 )
 from memoryhub_core.services.memory import delete_memory as svc_delete_memory
 from memoryhub_core.services.memory import read_memory as _read_memory
+from memoryhub_core.services.project import get_projects_for_user
 from memoryhub_core.services.push_broadcast import build_uri_only_notification
-
+from memoryhub_core.services.role import get_roles_for_user
 from src.core.app import mcp
 from src.core.authz import (
     AuthenticationError,
@@ -105,12 +104,12 @@ async def delete_memory(
     except ValueError:
         raise ToolError(
             f"Invalid memory_id format: '{memory_id}'. Expected a UUID string."
-        )
+        ) from None
 
     try:
         claims = get_claims_from_context()
     except AuthenticationError as exc:
-        raise ToolError(str(exc))
+        raise ToolError(str(exc)) from None
     tenant = get_tenant_filter(claims)
 
     session, gen = await get_db_session()
@@ -191,7 +190,7 @@ async def delete_memory(
         raise ToolError(
             f"Memory {memory_id} not found. It may have already been "
             "deleted, or you may not have read access to its scope."
-        )
+        ) from None
     except MemoryAlreadyDeletedError:
         # Reachable only via race condition: between our read_memory call
         # (which filters deleted_at IS NULL) and the service call, another
@@ -202,8 +201,8 @@ async def delete_memory(
         raise ToolError(
             f"Memory {memory_id} was deleted by another caller during this "
             "operation. No further action needed."
-        )
+        ) from None
     except MemoryAccessDeniedError as exc:
-        raise ToolError(f"Access denied: {exc.reason}")
+        raise ToolError(f"Access denied: {exc.reason}") from None
     finally:
         await release_db_session(gen)

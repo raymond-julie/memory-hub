@@ -303,10 +303,11 @@ class TestValkeyUnavailable:
     async def test_registration_succeeds_when_valkey_down(
         self, _reset_valkey_client, mock_authenticate, mock_set_session
     ):
+        from redis.exceptions import ConnectionError as RedisConnectionError
+
         from memoryhub_core.services.valkey_client import (
             ValkeyClient as RealValkeyClient,
         )
-        from redis.exceptions import ConnectionError as RedisConnectionError
 
         class BrokenClient:
             async def sadd(self, *args, **kwargs):

@@ -371,7 +371,7 @@ async def get_memory(memory_id: str, db: DbDep, settings: SettingsDep):
     try:
         parsed_id = uuid.UUID(memory_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"Invalid UUID: {memory_id!r}")
+        raise HTTPException(status_code=422, detail=f"Invalid UUID: {memory_id!r}") from None
 
     result = await db.execute(
         select(MemoryNode).where(
@@ -452,7 +452,7 @@ async def get_memory_history(memory_id: str, db: DbDep, settings: SettingsDep):
     try:
         parsed_id = uuid.UUID(memory_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"Invalid UUID: {memory_id!r}")
+        raise HTTPException(status_code=422, detail=f"Invalid UUID: {memory_id!r}") from None
 
     try:
         # Large max_versions preserves the BFF's unpaginated contract.
@@ -465,7 +465,7 @@ async def get_memory_history(memory_id: str, db: DbDep, settings: SettingsDep):
             max_versions=10_000,
         )
     except MemoryNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Memory {memory_id!r} not found")
+        raise HTTPException(status_code=404, detail=f"Memory {memory_id!r} not found") from None
 
     return [
         VersionEntry(
@@ -503,7 +503,7 @@ async def delete_memory(memory_id: str, db: DbDep, settings: SettingsDep):
     try:
         parsed_id = uuid.UUID(memory_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"Invalid UUID: {memory_id!r}")
+        raise HTTPException(status_code=422, detail=f"Invalid UUID: {memory_id!r}") from None
 
     result = await db.execute(
         select(MemoryNode).where(
@@ -793,7 +793,7 @@ async def get_rule(rule_id: str, db: DbDep, settings: SettingsDep):
     try:
         parsed_id = uuid.UUID(rule_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"Invalid UUID: {rule_id!r}")
+        raise HTTPException(status_code=422, detail=f"Invalid UUID: {rule_id!r}") from None
     result = await db.execute(
         select(CuratorRule).where(
             CuratorRule.id == parsed_id,
@@ -822,7 +822,7 @@ async def update_rule(
     try:
         parsed_id = uuid.UUID(rule_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"Invalid UUID: {rule_id!r}")
+        raise HTTPException(status_code=422, detail=f"Invalid UUID: {rule_id!r}") from None
     result = await db.execute(
         select(CuratorRule).where(
             CuratorRule.id == parsed_id,
@@ -850,7 +850,7 @@ async def delete_rule(rule_id: str, db: DbDep, settings: SettingsDep):
     try:
         parsed_id = uuid.UUID(rule_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"Invalid UUID: {rule_id!r}")
+        raise HTTPException(status_code=422, detail=f"Invalid UUID: {rule_id!r}") from None
     result = await db.execute(
         select(CuratorRule).where(
             CuratorRule.id == parsed_id,
@@ -1013,7 +1013,7 @@ async def update_contradiction(
     try:
         parsed_id = uuid.UUID(report_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"Invalid UUID: {report_id!r}")
+        raise HTTPException(status_code=422, detail=f"Invalid UUID: {report_id!r}") from None
     result = await db.execute(
         select(ContradictionReport)
         .join(MemoryNode, ContradictionReport.memory_id == MemoryNode.id)

@@ -3,6 +3,7 @@ import hashlib
 
 import jwt as pyjwt
 import pytest
+
 from src.keys import get_kid, get_public_key
 from src.tokens import create_access_token, create_refresh_token
 

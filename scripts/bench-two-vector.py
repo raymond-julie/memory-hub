@@ -41,7 +41,7 @@ from tests.perf.two_vector_bench import (  # noqa: E402
 
 
 def log(msg: str) -> None:
-    print(msg, flush=True)
+    print(msg, flush=True)  # noqa: T201
 
 
 def format_table(rows: list[AggregatedRow], title: str) -> str:

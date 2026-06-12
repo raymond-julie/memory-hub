@@ -2,7 +2,6 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from sqlalchemy import select
@@ -14,9 +13,9 @@ from src.models import OAuthClient
 
 logger = logging.getLogger("memoryhub-auth.token_exchange")
 
-_sa_token_cache: Optional[str] = None
+_sa_token_cache: str | None = None
 _tenant_cache: dict[str, tuple[str, float]] = {}
-_k8s_client_cache: Optional[httpx.AsyncClient] = None
+_k8s_client_cache: httpx.AsyncClient | None = None
 
 SA_USERNAME_PATTERN = re.compile(r"^system:serviceaccount:([^:]+):([^:]+)$")
 
@@ -79,14 +78,14 @@ async def validate_subject_token(subject_token: str) -> dict:
             401,
             "invalid_grant",
             f"Subject token validation failed: HTTP {e.response.status_code}",
-        )
+        ) from None
     except httpx.RequestError as e:
         logger.error("TokenReview API request failed: %s", e)
         raise OAuthError(
             502,
             "server_error",
             f"Token validation unavailable: {type(e).__name__}",
-        )
+        ) from None
 
     body = response.json()
     status = body.get("status", {})
@@ -156,7 +155,7 @@ async def resolve_tenant(namespace: str) -> str:
 async def lookup_exchange_client(client_id: str, session: AsyncSession) -> OAuthClient:
     stmt = select(OAuthClient).where(
         OAuthClient.client_id == client_id,
-        OAuthClient.active == True,
+        OAuthClient.active,
     )
     result = await session.execute(stmt)
     client = result.scalar_one_or_none()

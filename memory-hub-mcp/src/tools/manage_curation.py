@@ -13,15 +13,6 @@ from fastmcp.exceptions import ToolError
 from pydantic import Field
 from sqlalchemy import and_, select
 
-from src.core.app import mcp
-from src.core.authz import (
-    AuthenticationError,
-    authorize_read,
-    get_claims_from_context,
-    get_tenant_filter,
-)
-from src.tools._deps import get_db_session, release_db_session
-
 from memoryhub_core.models.curation import CuratorRule
 from memoryhub_core.models.schemas import (
     CuratorRuleCreate,
@@ -38,13 +29,27 @@ from memoryhub_core.services.exceptions import (
     MemoryNotFoundError,
 )
 from memoryhub_core.services.memory import (
-    read_memory as _read_memory,
-    report_contradiction as _report_contradiction,
-    resolve_contradiction as _resolve_contradiction,
     VALID_RESOLUTION_ACTIONS,
+)
+from memoryhub_core.services.memory import (
+    read_memory as _read_memory,
+)
+from memoryhub_core.services.memory import (
+    report_contradiction as _report_contradiction,
+)
+from memoryhub_core.services.memory import (
+    resolve_contradiction as _resolve_contradiction,
 )
 from memoryhub_core.services.project import get_projects_for_user
 from memoryhub_core.services.role import get_roles_for_user
+from src.core.app import mcp
+from src.core.authz import (
+    AuthenticationError,
+    authorize_read,
+    get_claims_from_context,
+    get_tenant_filter,
+)
+from src.tools._deps import get_db_session, release_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +303,7 @@ async def _handle_report_contradiction(
         raise ToolError(
             f"Invalid memory_id format: '{memory_id}'. "
             "Provide a valid UUID (e.g., '550e8400-e29b-41d4-a716-446655440000')."
-        )
+        ) from None
 
     if ctx:
         await ctx.info(
@@ -380,7 +385,7 @@ async def _handle_report_contradiction(
             f"Memory {memory_id} not found. "
             "It may have been deleted, or you may not have access to this "
             "memory's scope."
-        )
+        ) from None
     finally:
         await release_db_session(gen)
 
@@ -409,7 +414,7 @@ async def _handle_resolve_contradiction(
         raise ToolError(
             f"Invalid contradiction_id format: '{contradiction_id}'. "
             "Provide a valid UUID."
-        )
+        ) from None
 
     if resolution_action not in VALID_RESOLUTION_ACTIONS:
         raise ToolError(
@@ -447,7 +452,7 @@ async def _handle_resolve_contradiction(
         }
 
     except ContradictionNotFoundError:
-        raise ToolError(f"Contradiction {contradiction_id} not found.")
+        raise ToolError(f"Contradiction {contradiction_id} not found.") from None
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
     finally:

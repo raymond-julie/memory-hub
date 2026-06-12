@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from src.core.app import mcp
-from src.core.loaders import load_tools, load_resources, load_prompts
+from src.core.loaders import load_prompts, load_resources, load_tools
 
 
 def test_load_tools_resources_prompts(tmp_path: Path):

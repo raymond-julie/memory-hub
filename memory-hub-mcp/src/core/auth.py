@@ -1,7 +1,9 @@
 import os
-import jwt
 from dataclasses import dataclass
+
+import jwt
 from fastmcp import Context
+
 from .logging import get_logger
 
 log = get_logger("auth")
@@ -71,7 +73,7 @@ def requires_scopes(*scopes: str):
     required = (
         set(scopes)
         if scopes
-        else set((os.getenv("MCP_REQUIRED_SCOPES", "").split(",")))
+        else set(os.getenv("MCP_REQUIRED_SCOPES", "").split(","))
     )
     required = {s.strip() for s in required if s.strip()}
 

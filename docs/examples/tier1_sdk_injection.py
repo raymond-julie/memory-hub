@@ -48,9 +48,9 @@ async def main(query: str, project_id: str | None, url: str, api_key: str) -> No
         block = await build_memory_block(client, query, project_id=project_id)
 
     if block:
-        print(block)
+        print(block)  # noqa: T201
     else:
-        print("No memories found.", file=sys.stderr)
+        print("No memories found.", file=sys.stderr)  # noqa: T201
         sys.exit(1)
 
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if not args.url or not args.api_key:
-        print("Set MEMORYHUB_URL and MEMORYHUB_API_KEY, or pass --url and --api-key.", file=sys.stderr)
+        print("Set MEMORYHUB_URL and MEMORYHUB_API_KEY, or pass --url and --api-key.", file=sys.stderr)  # noqa: T201
         sys.exit(1)
 
     asyncio.run(main(args.query, args.project, args.url, args.api_key))

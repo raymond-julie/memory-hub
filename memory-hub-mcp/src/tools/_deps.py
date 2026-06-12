@@ -1,5 +1,6 @@
 """Shared dependencies for MCP tools."""
 
+import contextlib
 import os
 
 from memoryhub_core.services.database import get_session
@@ -27,10 +28,7 @@ def get_embedding_service() -> EmbeddingService:
     global _embedding_service
     if _embedding_service is None:
         url = os.environ.get("MEMORYHUB_EMBEDDING_URL")
-        if url:
-            _embedding_service = HttpEmbeddingService(url)
-        else:
-            _embedding_service = MockEmbeddingService()
+        _embedding_service = HttpEmbeddingService(url) if url else MockEmbeddingService()
     return _embedding_service
 
 
@@ -45,10 +43,7 @@ def get_reranker_service() -> RerankerService:
     global _reranker_service
     if _reranker_service is None:
         url = os.environ.get("MEMORYHUB_RERANKER_URL")
-        if url:
-            _reranker_service = HttpRerankerService(url)
-        else:
-            _reranker_service = NoopRerankerService()
+        _reranker_service = HttpRerankerService(url) if url else NoopRerankerService()
     return _reranker_service
 
 
@@ -59,10 +54,8 @@ async def get_db_session():
 
 
 async def release_db_session(gen):
-    try:
+    with contextlib.suppress(StopAsyncIteration):
         await gen.__anext__()
-    except StopAsyncIteration:
-        pass
 
 
 def get_s3_adapter() -> S3StorageAdapter | None:

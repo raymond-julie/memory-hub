@@ -14,6 +14,22 @@ from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from pydantic import Field, ValidationError
 
+from memoryhub_core.models.schemas import RelationshipCreate, RelationshipType
+from memoryhub_core.services.campaign import get_campaigns_for_project
+from memoryhub_core.services.curation.similarity import get_similar_memories as get_similar_memories_service
+from memoryhub_core.services.exceptions import MemoryNotFoundError
+from memoryhub_core.services.graph import (
+    create_relationship as create_relationship_service,
+)
+from memoryhub_core.services.graph import (
+    get_relationships as get_relationships_service,
+)
+from memoryhub_core.services.graph import (
+    trace_provenance,
+)
+from memoryhub_core.services.memory import read_memory as read_memory_service
+from memoryhub_core.services.project import get_projects_for_user
+from memoryhub_core.services.role import get_roles_for_user
 from src.core.app import mcp
 from src.core.authz import (
     AuthenticationError,
@@ -22,19 +38,6 @@ from src.core.authz import (
     get_tenant_filter,
 )
 from src.tools._deps import get_db_session, release_db_session
-
-from memoryhub_core.models.schemas import RelationshipCreate, RelationshipType
-from memoryhub_core.services.campaign import get_campaigns_for_project
-from memoryhub_core.services.curation.similarity import get_similar_memories as get_similar_memories_service
-from memoryhub_core.services.exceptions import MemoryNotFoundError
-from memoryhub_core.services.graph import (
-    create_relationship as create_relationship_service,
-    get_relationships as get_relationships_service,
-    trace_provenance,
-)
-from memoryhub_core.services.memory import read_memory as read_memory_service
-from memoryhub_core.services.project import get_projects_for_user
-from memoryhub_core.services.role import get_roles_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -315,14 +318,14 @@ async def _handle_create_relationship(
     except ValueError:
         raise ToolError(
             f"Invalid source_id format: {source_id!r}. Must be a valid UUID."
-        )
+        ) from None
 
     try:
         parsed_target_id = uuid.UUID(target_id)
     except ValueError:
         raise ToolError(
             f"Invalid target_id format: {target_id!r}. Must be a valid UUID."
-        )
+        ) from None
 
     if parsed_source_id == parsed_target_id:
         raise ToolError(
@@ -349,7 +352,7 @@ async def _handle_create_relationship(
         try:
             node = await read_memory_service(node_id_parsed, session, tenant_id=tenant)
         except MemoryNotFoundError:
-            raise ToolError(f"Memory node {node_id_parsed} not found.")
+            raise ToolError(f"Memory node {node_id_parsed} not found.") from None
         if node.scope == "campaign" and campaign_ids is None:
             if not project_id:
                 raise ToolError(
@@ -397,7 +400,7 @@ async def _handle_get_relationships(
     except ValueError:
         raise ToolError(
             f"Invalid node_id format: {node_id!r}. Must be a valid UUID."
-        )
+        ) from None
 
     if direction not in _VALID_DIRECTIONS:
         raise ToolError(
@@ -416,7 +419,7 @@ async def _handle_get_relationships(
         try:
             parsed_as_of = datetime.fromisoformat(as_of)
         except ValueError:
-            raise ToolError(f"Invalid as_of format: {as_of!r}. Use ISO-8601 (e.g., '2026-04-01T00:00:00Z').")
+            raise ToolError(f"Invalid as_of format: {as_of!r}. Use ISO-8601 (e.g., '2026-04-01T00:00:00Z').") from None
 
     if ctx:
         await ctx.info(f"Getting {direction} relationships for {node_id}")
@@ -431,7 +434,7 @@ async def _handle_get_relationships(
             as_of=parsed_as_of,
         )
     except MemoryNotFoundError:
-        raise ToolError(f"Memory node {node_id} not found.")
+        raise ToolError(f"Memory node {node_id} not found.") from None
 
     result: dict[str, Any] = {
         "relationships": [r.model_dump(mode="json") for r in rels],
@@ -522,7 +525,7 @@ async def _handle_get_similar(
     except ValueError:
         raise ToolError(
             f"Invalid memory_id format: {memory_id!r}. Must be a valid UUID."
-        )
+        ) from None
 
     if ctx:
         await ctx.info(f"Finding memories similar to {memory_id}")
@@ -533,7 +536,7 @@ async def _handle_get_similar(
     try:
         source = await read_memory_service(parsed_memory_id, session, tenant_id=tenant)
     except MemoryNotFoundError:
-        raise ToolError(f"Memory {memory_id} not found.")
+        raise ToolError(f"Memory {memory_id} not found.") from None
 
     campaign_ids: set[str] | None = None
     if source.scope == "campaign":

@@ -1,7 +1,9 @@
+import contextlib
 import os
 from pathlib import Path
-from typing import Optional
+
 from dotenv import load_dotenv
+
 from src.core.app import mcp
 from src.core.loaders import load_all, start_hot_reload
 from src.core.logging import configure_logging, get_logger
@@ -11,16 +13,14 @@ log = get_logger("bootstrap")
 
 class UnifiedMCPServer:
     def __init__(
-        self, name: Optional[str] = None, src_root: Optional[Path] = None
+        self, name: str | None = None, src_root: Path | None = None
     ) -> None:
         load_dotenv(override=True)
         configure_logging(os.getenv("MCP_LOG_LEVEL", "INFO"))
         self.name = name or os.getenv("MCP_SERVER_NAME", "fastmcp-unified")
         self.src_root = src_root or Path(__file__).resolve().parent.parent
-        try:
+        with contextlib.suppress(Exception):
             mcp.name = self.name  # type: ignore[attr-defined]
-        except Exception:
-            pass
         self.mcp = mcp
 
     def load(self) -> None:

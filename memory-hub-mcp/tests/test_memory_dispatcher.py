@@ -4,19 +4,18 @@ Tests the dispatcher routing, parameter validation, and forwarding logic.
 Underlying tool functions are patched to isolate the dispatcher.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastmcp.exceptions import ToolError
 
 from src.tools.memory import (
-    memory,
     _VALID_ACTIONS,
-    _require,
-    _opt_require,
     _forward,
+    _opt_require,
+    _require,
+    memory,
 )
-
 
 # ── Helper tests ───────────────────────────────────────────────────────────
 
@@ -432,7 +431,7 @@ class TestDispatchRouting:
         mock_get_db.return_value = (mock_session, AsyncMock())
         mock_list.return_value = {"entities": [], "total": 0, "limit": 50, "offset": 0, "has_more": False}
 
-        result = await memory(
+        await memory(
             action="list_entities",
             options={"entity_type": "person", "limit": 10},
         )
@@ -463,7 +462,7 @@ class TestDispatchRouting:
             "message": "Merged",
         }
 
-        result = await memory(
+        await memory(
             action="merge_entities",
             options={
                 "source_id": "87654321-4321-8765-4321-876543218765",
@@ -493,7 +492,7 @@ class TestDispatchRouting:
             "message": "Renamed",
         }
 
-        result = await memory(
+        await memory(
             action="rename_entity",
             memory_id="12345678-1234-5678-1234-567812345678",
             options={"new_name": "New Name"},

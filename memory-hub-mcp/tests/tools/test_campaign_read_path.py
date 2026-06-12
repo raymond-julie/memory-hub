@@ -38,6 +38,7 @@ def _campaign_claims():
 def _fake_campaign_node(**overrides):
     """Build a campaign-scoped MemoryNodeRead."""
     import datetime as _dt
+
     from memoryhub_core.models.schemas import MemoryNodeRead, MemoryScope, StorageType
 
     defaults = dict(

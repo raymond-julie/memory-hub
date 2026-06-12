@@ -22,6 +22,7 @@ from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+from memoryhub_core.config import AppSettings
 from memoryhub_core.services.project import list_projects_for_tenant
 from memoryhub_core.services.push_subscriber import (
     ensure_memoryhub_subscriber_running,
@@ -31,7 +32,6 @@ from memoryhub_core.services.valkey_client import (
     ValkeyUnavailableError,
     get_valkey_client,
 )
-from memoryhub_core.config import AppSettings
 from src.core.app import mcp
 from src.core.authz import get_tenant_filter
 from src.tools._deps import get_db_session, release_db_session

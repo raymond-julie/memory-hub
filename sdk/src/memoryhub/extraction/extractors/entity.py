@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from typing import TYPE_CHECKING
 
@@ -51,11 +52,9 @@ class EntityExtractor(Extractor):
         self._nlp: Language | None = None
 
         if _HAS_SPACY:
-            try:
-                self._nlp = spacy.load(spacy_model)
-            except OSError:
+            with contextlib.suppress(OSError):
                 # Model not installed, fall back to pattern matching only
-                pass
+                self._nlp = spacy.load(spacy_model)
 
     @property
     def name(self) -> str:

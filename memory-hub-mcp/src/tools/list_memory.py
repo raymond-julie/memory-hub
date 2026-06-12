@@ -18,9 +18,9 @@ from memoryhub_core.services.project import get_projects_for_user
 from memoryhub_core.services.role import get_roles_for_user
 from src.core.app import mcp
 from src.core.authz import (
-    AuthenticationError,
     PROJECT_ISOLATION_ENABLED,
     ROLE_ISOLATION_ENABLED,
+    AuthenticationError,
     build_authorized_scopes,
     get_claims_from_context,
     get_tenant_filter,
@@ -104,7 +104,7 @@ async def list_memory(
     try:
         claims = get_claims_from_context()
     except AuthenticationError as exc:
-        raise ToolError(str(exc))
+        raise ToolError(str(exc)) from None
 
     authorized = build_authorized_scopes(claims)
     tenant = get_tenant_filter(claims)

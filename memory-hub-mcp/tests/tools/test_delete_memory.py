@@ -1,9 +1,9 @@
 """Tests for delete_memory tool."""
 
 import inspect
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 from src.tools.delete_memory import delete_memory
 

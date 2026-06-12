@@ -10,7 +10,7 @@ Migrated from test_report_contradiction.py and test_set_curation_rule.py.
 
 import inspect
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,7 +19,6 @@ from fastmcp.exceptions import ToolError
 
 import src.tools.auth as auth_mod
 from src.tools.manage_curation import manage_curation
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -239,7 +238,7 @@ async def test_resolve_contradiction_invalid_resolution_action():
 @pytest.mark.asyncio
 async def test_resolve_contradiction_valid_actions(resolution_action):
     """Each valid resolution_action produces a resolved=True response."""
-    resolved_at = datetime(2026, 4, 20, 12, 0, 0, tzinfo=timezone.utc)
+    resolved_at = datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)
     mock_report = MagicMock()
     mock_report.id = uuid.UUID(CONTRADICTION_UUID)
     mock_report.resolved_at = resolved_at
@@ -279,7 +278,7 @@ async def test_resolve_contradiction_valid_actions(resolution_action):
 @pytest.mark.asyncio
 async def test_resolve_contradiction_includes_note_in_message():
     """resolution_note is appended to the response message."""
-    resolved_at = datetime(2026, 4, 20, 12, 0, 0, tzinfo=timezone.utc)
+    resolved_at = datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)
     mock_report = MagicMock()
     mock_report.id = uuid.UUID(CONTRADICTION_UUID)
     mock_report.resolved_at = resolved_at

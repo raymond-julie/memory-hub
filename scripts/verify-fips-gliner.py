@@ -50,7 +50,7 @@ def verify_model_load(model_name: str) -> tuple[bool, str, float]:
 
     start = time.monotonic()
     try:
-        model = GLiNER.from_pretrained(model_name)
+        GLiNER.from_pretrained(model_name)
         elapsed = time.monotonic() - start
         return True, f"Model loaded successfully in {elapsed:.1f}s", elapsed
     except ValueError as exc:
@@ -104,7 +104,7 @@ def verify_hashlib_fips_awareness() -> tuple[bool, str]:
     """Check that huggingface_hub's insecure_hashlib wrapper is present."""
     try:
         from huggingface_hub.utils import insecure_hashlib
-        sha256 = insecure_hashlib.sha256()
+        insecure_hashlib.sha256()
         return True, "huggingface_hub insecure_hashlib wrapper present and functional"
     except ImportError:
         return False, "huggingface_hub insecure_hashlib wrapper NOT found"
@@ -118,50 +118,50 @@ def main() -> int:
     )
 
     fips_active = check_fips_mode()
-    print(f"FIPS mode: {'ACTIVE' if fips_active else 'inactive'}")
-    print(f"Model: {model_name}")
-    print(f"Python: {sys.version}")
-    print()
+    print(f"FIPS mode: {'ACTIVE' if fips_active else 'inactive'}")  # noqa: T201
+    print(f"Model: {model_name}")  # noqa: T201
+    print(f"Python: {sys.version}")  # noqa: T201
+    print()  # noqa: T201
 
     if not fips_active:
-        print(
+        print(  # noqa: T201
             "WARNING: FIPS mode is not active on this system. Tests will "
             "still run but cannot confirm FIPS compliance. Run this script "
             "on a FIPS-enabled cluster for authoritative results."
         )
-        print()
+        print()  # noqa: T201
 
     results: list[tuple[str, bool, str]] = []
 
     # Test 1: hashlib wrapper
     ok, msg = verify_hashlib_fips_awareness()
     results.append(("hashlib wrapper", ok, msg))
-    print(f"[{'PASS' if ok else 'FAIL'}] hashlib wrapper: {msg}")
+    print(f"[{'PASS' if ok else 'FAIL'}] hashlib wrapper: {msg}")  # noqa: T201
 
     # Test 2: model load
     ok, msg, _ = verify_model_load(model_name)
     results.append(("model load", ok, msg))
-    print(f"[{'PASS' if ok else 'FAIL'}] model load: {msg}")
+    print(f"[{'PASS' if ok else 'FAIL'}] model load: {msg}")  # noqa: T201
 
     # Test 3: inference
     if results[-1][1]:
         ok, msg, _ = verify_inference(model_name)
         results.append(("inference", ok, msg))
-        print(f"[{'PASS' if ok else 'FAIL'}] inference: {msg}")
+        print(f"[{'PASS' if ok else 'FAIL'}] inference: {msg}")  # noqa: T201
     else:
         results.append(("inference", False, "skipped (model load failed)"))
-        print("[SKIP] inference: model load failed")
+        print("[SKIP] inference: model load failed")  # noqa: T201
 
-    print()
+    print()  # noqa: T201
     failures = [r for r in results if not r[1]]
     if failures:
-        print(f"RESULT: {len(failures)} failure(s)")
+        print(f"RESULT: {len(failures)} failure(s)")  # noqa: T201
         for name, _, msg in failures:
-            print(f"  - {name}: {msg}")
+            print(f"  - {name}: {msg}")  # noqa: T201
         return 1
 
     label = "FIPS-VERIFIED" if fips_active else "PASS (non-FIPS)"
-    print(f"RESULT: {label} -- all checks passed")
+    print(f"RESULT: {label} -- all checks passed")  # noqa: T201
     return 0
 
 
