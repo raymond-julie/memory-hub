@@ -23,6 +23,10 @@ from memoryhub_core.models.campaign import (  # noqa: F401 — import registers 
     Campaign,
     CampaignMembership,
 )
+from memoryhub_core.models.conversation import (  # noqa: F401 — import registers tables with Base
+    ConversationExtraction,
+    ConversationThread,
+)
 from memoryhub_core.models.curation import CuratorRule
 from memoryhub_core.models.memory import MemoryNode, MemoryRelationship
 from memoryhub_core.models.project import Project, ProjectMembership  # noqa: F401 — import registers tables with Base
@@ -76,6 +80,28 @@ async def async_session():
     domains_col.type = _JsonEncodedVector()  # reuse: list[str] ↔ JSON text
     domains_col.server_default = None
 
+    # Patch conversation model ARRAY columns for SQLite.
+    thread_table = ConversationThread.__table__
+    participant_col = thread_table.c.participant_ids
+    original_participant_type = participant_col.type
+    original_participant_default = participant_col.server_default
+    participant_col.type = _JsonEncodedVector()
+    participant_col.server_default = None
+
+    extraction_table = ConversationExtraction.__table__
+    source_msgs_col = extraction_table.c.source_messages
+    original_source_msgs_type = source_msgs_col.type
+    original_source_msgs_default = source_msgs_col.server_default
+    source_msgs_col.type = _JsonEncodedVector()
+    source_msgs_col.server_default = None
+
+    # Remove jsonb_typeof check constraint (PostgreSQL-only function).
+    removed_constraints = {
+        c for c in thread_table.constraints
+        if hasattr(c, "sqltext") and "jsonb_typeof" in str(c.sqltext)
+    }
+    thread_table.constraints -= removed_constraints
+
     try:
         async with engine.begin() as conn:
             await conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -90,6 +116,11 @@ async def async_session():
         rule_config_col.server_default = original_rule_config_default
         domains_col.type = original_domains_type
         domains_col.server_default = original_domains_default
+        participant_col.type = original_participant_type
+        participant_col.server_default = original_participant_default
+        source_msgs_col.type = original_source_msgs_type
+        source_msgs_col.server_default = original_source_msgs_default
+        thread_table.constraints |= removed_constraints
         await engine.dispose()
 
 

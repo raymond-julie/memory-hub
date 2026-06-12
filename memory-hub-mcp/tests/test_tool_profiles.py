@@ -8,29 +8,29 @@ manipulation at import time).
 
 
 from src.main import (
-    _TOOLS_COMPACT,
-    _TOOLS_FULL,
-    _TOOLS_MINIMAL,
     _INSTRUCTIONS_COMPACT,
     _INSTRUCTIONS_FULL,
     _INSTRUCTIONS_MINIMAL,
     _PROFILE_MAP,
+    _TOOLS_COMPACT,
+    _TOOLS_FULL,
+    _TOOLS_MINIMAL,
     _VALID_PROFILES,
 )
 
 
 class TestProfileDefinitions:
     def test_three_profiles_defined(self):
-        assert _VALID_PROFILES == {"compact", "full", "minimal"}
+        assert {"compact", "full", "minimal"} == _VALID_PROFILES
 
-    def test_compact_has_2_tools(self):
-        assert len(_TOOLS_COMPACT) == 2
+    def test_compact_has_3_tools(self):
+        assert len(_TOOLS_COMPACT) == 3
 
-    def test_full_has_11_tools(self):
-        assert len(_TOOLS_FULL) == 11
+    def test_full_has_12_tools(self):
+        assert len(_TOOLS_FULL) == 12
 
-    def test_minimal_has_4_tools(self):
-        assert len(_TOOLS_MINIMAL) == 4
+    def test_minimal_has_5_tools(self):
+        assert len(_TOOLS_MINIMAL) == 5
 
     def test_all_profiles_include_register_session(self):
         from src.tools.register_session import register_session
@@ -39,13 +39,15 @@ class TestProfileDefinitions:
                 f"Profile '{profile_name}' missing register_session"
             )
 
-    def test_compact_includes_memory_dispatcher(self):
+    def test_compact_includes_memory_and_thread_dispatchers(self):
         from src.tools.memory import memory
+        from src.tools.thread import thread
         assert memory in _TOOLS_COMPACT
+        assert thread in _TOOLS_COMPACT
 
     def test_compact_excludes_flat_tools(self):
-        from src.tools.write_memory import write_memory
         from src.tools.search_memory import search_memory
+        from src.tools.write_memory import write_memory
         assert write_memory not in _TOOLS_COMPACT
         assert search_memory not in _TOOLS_COMPACT
 
@@ -54,33 +56,37 @@ class TestProfileDefinitions:
         assert memory not in _TOOLS_FULL
 
     def test_full_includes_all_flat_tools(self):
-        from src.tools.write_memory import write_memory
-        from src.tools.read_memory import read_memory
-        from src.tools.update_memory import update_memory
         from src.tools.delete_memory import delete_memory
-        from src.tools.search_memory import search_memory
-        from src.tools.manage_session import manage_session
-        from src.tools.manage_graph import manage_graph
+        from src.tools.list_memory import list_memory
         from src.tools.manage_curation import manage_curation
+        from src.tools.manage_graph import manage_graph
         from src.tools.manage_project import manage_project
+        from src.tools.manage_session import manage_session
+        from src.tools.read_memory import read_memory
+        from src.tools.search_memory import search_memory
+        from src.tools.thread import thread
+        from src.tools.update_memory import update_memory
+        from src.tools.write_memory import write_memory
         for fn in [write_memory, read_memory, update_memory, delete_memory,
-                   search_memory, manage_session, manage_graph,
-                   manage_curation, manage_project]:
+                   search_memory, list_memory, manage_session, manage_graph,
+                   manage_curation, manage_project, thread]:
             assert fn in _TOOLS_FULL, f"{fn.__name__} missing from full profile"
 
-    def test_minimal_has_search_write_read(self):
-        from src.tools.search_memory import search_memory
-        from src.tools.write_memory import write_memory
+    def test_minimal_has_search_write_read_thread(self):
         from src.tools.read_memory import read_memory
+        from src.tools.search_memory import search_memory
+        from src.tools.thread import thread
+        from src.tools.write_memory import write_memory
         assert search_memory in _TOOLS_MINIMAL
         assert write_memory in _TOOLS_MINIMAL
         assert read_memory in _TOOLS_MINIMAL
+        assert thread in _TOOLS_MINIMAL
 
     def test_minimal_excludes_advanced_tools(self):
-        from src.tools.manage_graph import manage_graph
-        from src.tools.manage_curation import manage_curation
-        from src.tools.update_memory import update_memory
         from src.tools.delete_memory import delete_memory
+        from src.tools.manage_curation import manage_curation
+        from src.tools.manage_graph import manage_graph
+        from src.tools.update_memory import update_memory
         assert manage_graph not in _TOOLS_MINIMAL
         assert manage_curation not in _TOOLS_MINIMAL
         assert update_memory not in _TOOLS_MINIMAL
