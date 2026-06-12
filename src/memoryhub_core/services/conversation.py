@@ -138,6 +138,7 @@ async def get_thread(
     limit: int = 50,
     before_sequence: int | None = None,
     s3_adapter: S3StorageAdapter | None = None,
+    caller_id: str | None = None,
 ) -> dict | None:
     """Retrieve a conversation thread with optional message history.
 
@@ -185,11 +186,15 @@ async def get_thread(
         if has_more:
             messages.pop()  # Remove the extra row
 
+        # Filter redacted messages for non-owner callers
+        is_owner = caller_id is not None and caller_id == thread.owner_id
+        if caller_id is not None and not is_owner:
+            messages = [m for m in messages if not m.handoff_redacted]
+
         # Fetch S3 content if needed
         message_reads = []
         for msg in messages:
             if msg.storage_type == "s3" and s3_adapter is not None and msg.content_ref:
-                # Fetch from S3
                 msg.content = await s3_adapter.get_content(msg.content_ref)
             message_reads.append(ConversationMessageRead.model_validate(msg))
 
@@ -398,3 +403,156 @@ async def archive_thread(
     await session.refresh(thread)
 
     return ConversationThreadRead.model_validate(thread)
+
+
+async def fork_thread(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    thread_id: uuid.UUID,
+    from_sequence: int,
+    owner_id: str,
+    actor_id: str | None = None,
+    title: str | None = None,
+) -> ConversationThreadRead:
+    """Create a divergent copy of a thread up to a fork point.
+
+    Copies messages with sequence_number <= from_sequence into a new thread.
+    The new thread gets a fresh ID, resets extraction_cursor to 0, and is
+    owned by the forking caller.
+    """
+    # Load source thread
+    stmt = select(ConversationThread).where(
+        ConversationThread.id == thread_id,
+        ConversationThread.tenant_id == tenant_id,
+        ConversationThread.deleted_at.is_(None),
+    )
+    result = await session.execute(stmt)
+    source = result.scalar_one_or_none()
+
+    if source is None:
+        raise ThreadNotFoundError(thread_id)
+
+    # Create forked thread
+    new_id = uuid.uuid4()
+    forked = ConversationThread(
+        id=new_id,
+        tenant_id=tenant_id,
+        scope=source.scope,
+        scope_id=source.scope_id,
+        owner_id=owner_id,
+        actor_id=actor_id,
+        participant_ids=[owner_id],
+        title=title or f"Fork of {source.title or str(thread_id)[:8]}",
+        retention_policy=source.retention_policy,
+        status="active",
+        extraction_cursor=0,
+        created_at=datetime.now(UTC),
+        metadata_={"forked_from": str(thread_id), "fork_sequence": from_sequence},
+    )
+    session.add(forked)
+
+    # Copy messages up to fork point
+    msg_stmt = (
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.thread_id == thread_id,
+            ConversationMessage.sequence_number <= from_sequence,
+        )
+        .order_by(ConversationMessage.sequence_number.asc())
+    )
+    msg_result = await session.execute(msg_stmt)
+    source_messages = list(msg_result.scalars().all())
+
+    for seq, msg in enumerate(source_messages, start=1):
+        new_msg = ConversationMessage(
+            id=uuid.uuid4(),
+            thread_id=new_id,
+            sequence_number=seq,
+            role=msg.role,
+            actor_id=msg.actor_id,
+            content=msg.content,
+            storage_type=msg.storage_type,
+            content_ref=msg.content_ref,
+            content_size=msg.content_size,
+            tool_call_id=msg.tool_call_id,
+            metadata_=msg.metadata_,
+            tenant_id=tenant_id,
+            created_at=datetime.now(UTC),
+        )
+        session.add(new_msg)
+
+    await session.commit()
+    await session.refresh(forked)
+
+    return ConversationThreadRead.model_validate(forked)
+
+
+async def share_thread(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    thread_id: uuid.UUID,
+    grantee_id: str,
+    access_level: str,
+    authorized_by: str,
+) -> ConversationThreadRead:
+    """Grant access to a thread participant.
+
+    Adds the grantee to participant_ids and sets their access level in
+    participant_access. Idempotent: re-sharing updates the access level.
+    """
+    stmt = select(ConversationThread).where(
+        ConversationThread.id == thread_id,
+        ConversationThread.tenant_id == tenant_id,
+        ConversationThread.deleted_at.is_(None),
+    )
+    result = await session.execute(stmt)
+    thread = result.scalar_one_or_none()
+
+    if thread is None:
+        raise ThreadNotFoundError(thread_id)
+
+    # Add to participant_ids if not present
+    participants = list(thread.participant_ids or [])
+    if grantee_id not in participants:
+        participants.append(grantee_id)
+    thread.participant_ids = participants
+
+    # Set access level
+    access = dict(thread.participant_access or {})
+    access[grantee_id] = access_level
+    thread.participant_access = access
+
+    # Record who authorized this share
+    meta = dict(thread.metadata_ or {})
+    shares = meta.get("share_grants", [])
+    shares.append({
+        "grantee_id": grantee_id,
+        "access_level": access_level,
+        "authorized_by": authorized_by,
+        "granted_at": datetime.now(UTC).isoformat(),
+    })
+    meta["share_grants"] = shares
+    thread.metadata_ = meta
+
+    await session.commit()
+    await session.refresh(thread)
+
+    return ConversationThreadRead.model_validate(thread)
+
+
+async def lookup_thread_by_a2a_context(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    a2a_context_id: str,
+) -> uuid.UUID | None:
+    """Look up a thread by A2A context ID. Returns thread_id or None."""
+    stmt = select(ConversationThread.id).where(
+        ConversationThread.a2a_context_id == a2a_context_id,
+        ConversationThread.tenant_id == tenant_id,
+        ConversationThread.deleted_at.is_(None),
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
