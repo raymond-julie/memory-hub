@@ -10,9 +10,11 @@ in this module is testable without I/O of its own.
 
 from __future__ import annotations
 
+import json
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from memoryhub import (
@@ -145,13 +147,13 @@ _PATTERN_BLOCKS: dict[LoadingPattern, str] = {
     "eager": """\
 ## At session start
 
-Check for a `<memoryhub-context>` block in your conversation context.
-If present, the SessionStart hook has pre-loaded project and user
-memories -- use them as your working set. Do NOT call `register_session`
-or `search_memory` yet.
+A `<memoryhub-context>` block should appear in your conversation context,
+injected by the SessionStart hook before you see the first prompt. Use
+its contents as your working set. Do NOT call `register_session` or
+`search_memory` -- the hook already did this.
 
-If no `<memoryhub-context>` block is present (hook not configured or
-failed silently), fall back to the manual flow:
+If no `<memoryhub-context>` block is present (CLI not installed or hook
+misconfigured), fall back to the manual flow:
 
 1. Read your API key from `~/.config/memoryhub/api-key` (trim whitespace).
 2. Call `register_session(api_key="<key>")` to authenticate.
@@ -171,13 +173,13 @@ failed silently), fall back to the manual flow:
     "lazy": """\
 ## At session start
 
-Check for a `<memoryhub-context>` block in your conversation context.
-If present, the SessionStart hook has pre-loaded project and user
-memories -- use them as your working set. Do NOT call `register_session`
-or `search_memory` yet.
+A `<memoryhub-context>` block should appear in your conversation context,
+injected by the SessionStart hook before you see the first prompt. Use
+its contents as your working set. Do NOT call `register_session` or
+`search_memory` -- the hook already did this.
 
-If no `<memoryhub-context>` block is present (hook not configured or
-failed silently), fall back to the manual flow: read your API key from
+If no `<memoryhub-context>` block is present (CLI not installed or hook
+misconfigured), fall back to the manual flow: read your API key from
 `~/.config/memoryhub/api-key` (trim whitespace), call
 `register_session(api_key="<key>")`, then after the first user turn
 derive a 1-2 sentence summary and call `search_memory(query=<summary>)`.
@@ -193,13 +195,13 @@ derive a 1-2 sentence summary and call `search_memory(query=<summary>)`.
     "lazy_with_rebias": """\
 ## At session start
 
-Check for a `<memoryhub-context>` block in your conversation context.
-If present, the SessionStart hook has pre-loaded project and user
-memories -- use them as your working set. Do NOT call `register_session`
-or `search_memory` yet.
+A `<memoryhub-context>` block should appear in your conversation context,
+injected by the SessionStart hook before you see the first prompt. Use
+its contents as your working set. Do NOT call `register_session` or
+`search_memory` -- the hook already did this.
 
-If no `<memoryhub-context>` block is present (hook not configured or
-failed silently), fall back to the manual flow: read your API key from
+If no `<memoryhub-context>` block is present (CLI not installed or hook
+misconfigured), fall back to the manual flow: read your API key from
 `~/.config/memoryhub/api-key` (trim whitespace), call
 `register_session(api_key="<key>")`, then after the first user turn
 derive a 1-2 sentence summary and call `search_memory(query=<summary>)`.
@@ -224,13 +226,13 @@ not have to re-search for memories it already saw.
     "jit": """\
 ## At session start
 
-Check for a `<memoryhub-context>` block in your conversation context.
-If present, the SessionStart hook has pre-loaded project and user
-memories -- use them as initial context. Do NOT call `register_session`
-or `search_memory` yet.
+A `<memoryhub-context>` block should appear in your conversation context,
+injected by the SessionStart hook before you see the first prompt. Use
+its contents as initial context. Do NOT call `register_session` or
+`search_memory` -- the hook already did this.
 
-If no `<memoryhub-context>` block is present (hook not configured or
-failed silently), fall back to the manual flow: read your API key from
+If no `<memoryhub-context>` block is present (CLI not installed or hook
+misconfigured), fall back to the manual flow: read your API key from
 `~/.config/memoryhub/api-key` (trim whitespace) and call
 `register_session(api_key="<key>")`. Do NOT call `search_memory` --
 there is no working set in this pattern.
@@ -351,6 +353,8 @@ class WriteResult:
     yaml_path: Path
     rule_path: Path
     legacy_backup: Path | None  # set when an old memoryhub-integration.md was moved
+    hook_path: Path | None = None
+    settings_path: Path | None = None
 
 
 LEGACY_RULE_NAME = "memoryhub-integration.md"
@@ -381,12 +385,17 @@ def write_init_files(
     project_dir: Path,
     *,
     overwrite: bool = False,
+    generate_hooks: bool = True,
 ) -> WriteResult:
-    """Write both `.memoryhub.yaml` and the generated rule file.
+    """Write `.memoryhub.yaml`, the generated rule file, and optionally hooks.
 
     Used by `memoryhub config init`. The regenerate flow uses
     :func:`rewrite_rule_file` instead so it does not clobber the
     user-edited YAML.
+
+    When ``generate_hooks`` is True (default), also writes the
+    SessionStart hook script to `.claude/hooks/` and merges hook
+    entries into `.claude/settings.json`.
 
     Raises:
         FileExistsError: If either generated file already exists and
@@ -411,10 +420,18 @@ def write_init_files(
     yaml_path.write_text(render_yaml(config))
     rule_path.write_text(render_rule_file(config))
 
+    hook_path = None
+    settings_path = None
+    if generate_hooks:
+        hook_path = write_hook_script(project_dir)
+        settings_path = merge_settings_hooks(project_dir)
+
     return WriteResult(
         yaml_path=yaml_path,
         rule_path=rule_path,
         legacy_backup=legacy_backup,
+        hook_path=hook_path,
+        settings_path=settings_path,
     )
 
 
@@ -444,6 +461,136 @@ def rewrite_rule_file(
     )
 
 
+# ── Hook scaffolding ────────────────────────────────────────────────────────
+#
+# `memoryhub config init` generates a SessionStart hook script and merges
+# hook entries into .claude/settings.json so new projects get zero-overhead
+# memory injection without manual setup.
+
+HOOK_SCRIPT_TEMPLATE = """\
+#!/bin/bash
+# Inject MemoryHub memories at Claude Code session start.
+# Stdout is added to the conversation context before the first prompt.
+# Exits 0 silently on any failure -- the session starts normally and
+# the MCP server remains available as a fallback.
+
+set -euo pipefail
+
+API_KEY_FILE="$HOME/.config/memoryhub/api-key"
+[ -f "$API_KEY_FILE" ] || exit 0
+
+API_KEY=$(tr -d '\\n' < "$API_KEY_FILE")
+[ -n "$API_KEY" ] || exit 0
+export MEMORYHUB_API_KEY="$API_KEY"
+
+if [ -z "${{MEMORYHUB_URL:-}}" ]; then
+  CONFIG_FILE="$HOME/.config/memoryhub/config.json"
+  if [ -f "$CONFIG_FILE" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      MEMORYHUB_URL=$(jq -r '.url // empty' "$CONFIG_FILE" 2>/dev/null) || true
+    elif command -v python3 >/dev/null 2>&1; then
+      MEMORYHUB_URL=$(python3 -c \\
+        "import json,sys; print(json.load(open(sys.argv[1])).get('url',''))" \\
+        "$CONFIG_FILE" 2>/dev/null) || true
+    else
+      MEMORYHUB_URL=$(grep -o '"url"[[:space:]]*:[[:space:]]*"[^"]*"' \\
+        "$CONFIG_FILE" 2>/dev/null | head -1 \\
+        | sed 's/.*"url"[[:space:]]*:[[:space:]]*"//;s/"$//') || true
+    fi
+  fi
+fi
+[ -n "${{MEMORYHUB_URL:-}}" ] || exit 0
+export MEMORYHUB_URL
+
+PROJECT_ROOT="${{CLAUDE_PROJECT_DIR:-$PWD}}"
+MEMORYHUB_BIN=$(command -v memoryhub 2>/dev/null) || true
+if [ -z "$MEMORYHUB_BIN" ]; then
+  for candidate in \\
+    "$PROJECT_ROOT/.venv/bin/memoryhub" \\
+    "$PROJECT_ROOT/memoryhub-cli/.venv/bin/memoryhub"; do
+    [ -x "$candidate" ] && MEMORYHUB_BIN="$candidate" && break
+  done
+fi
+[ -n "$MEMORYHUB_BIN" ] || exit 0
+
+PROJECT_ID=$(basename "$PROJECT_ROOT")
+
+"$MEMORYHUB_BIN" search \\
+  "project context architecture preferences decisions workflow" \\
+  --project-id "$PROJECT_ID" \\
+  --output compact \\
+  --max 20 2>/dev/null || exit 0
+"""
+
+HOOK_SCRIPT_NAME = "load-memories.sh"
+
+_SETTINGS_HOOK_MATCHERS = ("startup", "compact", "clear")
+
+
+def _build_hook_entry(matcher: str) -> dict[str, Any]:
+    """Build one SessionStart hook entry for the given matcher."""
+    return {
+        "matcher": matcher,
+        "hooks": [
+            {
+                "type": "command",
+                "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/" + HOOK_SCRIPT_NAME,
+                "timeout": 5,
+            }
+        ],
+    }
+
+
+def _has_memoryhub_hook(entries: list[dict[str, Any]]) -> bool:
+    """Check whether any existing SessionStart entry references load-memories."""
+    for entry in entries:
+        for hook in entry.get("hooks", []):
+            cmd = hook.get("command", "")
+            if HOOK_SCRIPT_NAME in cmd:
+                return True
+    return False
+
+
+def merge_settings_hooks(project_dir: Path) -> Path:
+    """Merge MemoryHub hook entries into .claude/settings.json.
+
+    Read-modify-write with idempotent detection: if load-memories hooks
+    are already present, the file is left unchanged.
+
+    Returns the path to settings.json (whether modified or not).
+    """
+    settings_dir = project_dir / ".claude"
+    settings_path = settings_dir / "settings.json"
+
+    settings: dict[str, Any] = {}
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text())
+
+    hooks = settings.setdefault("hooks", {})
+    session_start = hooks.setdefault("SessionStart", [])
+
+    if _has_memoryhub_hook(session_start):
+        return settings_path
+
+    for matcher in _SETTINGS_HOOK_MATCHERS:
+        session_start.append(_build_hook_entry(matcher))
+
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    return settings_path
+
+
+def write_hook_script(project_dir: Path) -> Path:
+    """Write the hook script to .claude/hooks/ with execute permission."""
+    hooks_dir = project_dir / ".claude" / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_path = hooks_dir / HOOK_SCRIPT_NAME
+
+    hook_path.write_text(HOOK_SCRIPT_TEMPLATE)
+    hook_path.chmod(hook_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return hook_path
+
+
 __all__ = [
     "InitChoices",
     "SessionShape",
@@ -451,11 +598,15 @@ __all__ = [
     "FocusSource",
     "WriteResult",
     "GENERATED_RULE_NAME",
+    "HOOK_SCRIPT_NAME",
+    "HOOK_SCRIPT_TEMPLATE",
     "LEGACY_RULE_NAME",
     "build_project_config",
+    "merge_settings_hooks",
     "render_yaml",
     "render_rule_file",
     "rewrite_rule_file",
     "suggest_pattern",
+    "write_hook_script",
     "write_init_files",
 ]

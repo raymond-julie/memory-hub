@@ -1013,6 +1013,8 @@ def config_init(
         json_success({
             "yaml_path": str(result.yaml_path),
             "rule_path": str(result.rule_path),
+            "hook_path": str(result.hook_path) if result.hook_path else None,
+            "settings_path": str(result.settings_path) if result.settings_path else None,
             "legacy_backup": str(result.legacy_backup) if result.legacy_backup else None,
         })
         return
@@ -1021,6 +1023,10 @@ def config_init(
 
     console.print(f"\n[green]Wrote {result.yaml_path}[/green]")
     console.print(f"[green]Wrote {result.rule_path}[/green]")
+    if result.hook_path:
+        console.print(f"[green]Wrote {result.hook_path}[/green]")
+    if result.settings_path:
+        console.print(f"[green]Updated {result.settings_path}[/green]")
     if result.legacy_backup is not None:
         console.print(
             f"[yellow]Backed up legacy rule to {result.legacy_backup}.[/yellow]\n"

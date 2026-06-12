@@ -13,13 +13,17 @@ from memoryhub import (
 
 from memoryhub_cli.project_config import (
     GENERATED_RULE_NAME,
+    HOOK_SCRIPT_NAME,
+    HOOK_SCRIPT_TEMPLATE,
     LEGACY_RULE_NAME,
     InitChoices,
     build_project_config,
+    merge_settings_hooks,
     render_rule_file,
     render_yaml,
     rewrite_rule_file,
     suggest_pattern,
+    write_hook_script,
     write_init_files,
 )
 
@@ -512,3 +516,134 @@ def test_history_accepts_project_id_option():
     assert result.exit_code == 0
     text = _strip_ansi(result.stdout)
     assert "--project-id" in text, f"--project-id not in: {text}"
+
+
+# ── Hook scaffolding ────────────────────────────────────────────────────
+
+
+def test_hook_script_template_uses_path_discovery_first():
+    """CLI discovery should try PATH before project-local venvs."""
+    lines = HOOK_SCRIPT_TEMPLATE.splitlines()
+    path_check_idx = next(
+        i for i, l in enumerate(lines) if "command -v memoryhub" in l
+    )
+    venv_check_idx = next(
+        i for i, l in enumerate(lines) if ".venv/bin/memoryhub" in l
+    )
+    assert path_check_idx < venv_check_idx
+
+
+def test_hook_script_template_has_jq_fallback():
+    assert "jq -r" in HOOK_SCRIPT_TEMPLATE
+    assert "python3 -c" in HOOK_SCRIPT_TEMPLATE
+    assert "grep -o" in HOOK_SCRIPT_TEMPLATE
+
+
+def test_write_hook_script_creates_executable(tmp_path: Path):
+    import os
+    import stat
+
+    hook_path = write_hook_script(tmp_path)
+    assert hook_path == tmp_path / ".claude" / "hooks" / HOOK_SCRIPT_NAME
+    assert hook_path.is_file()
+    mode = hook_path.stat().st_mode
+    assert mode & stat.S_IXUSR, "hook script should be owner-executable"
+
+
+def test_merge_settings_hooks_creates_settings_json(tmp_path: Path):
+    import json
+
+    settings_path = merge_settings_hooks(tmp_path)
+    assert settings_path.is_file()
+
+    data = json.loads(settings_path.read_text())
+    entries = data["hooks"]["SessionStart"]
+    matchers = [e["matcher"] for e in entries]
+    assert "startup" in matchers
+    assert "compact" in matchers
+    assert "clear" in matchers
+
+    for entry in entries:
+        assert HOOK_SCRIPT_NAME in entry["hooks"][0]["command"]
+        assert entry["hooks"][0]["timeout"] == 5
+
+
+def test_merge_settings_hooks_is_idempotent(tmp_path: Path):
+    import json
+
+    merge_settings_hooks(tmp_path)
+    first = (tmp_path / ".claude" / "settings.json").read_text()
+
+    merge_settings_hooks(tmp_path)
+    second = (tmp_path / ".claude" / "settings.json").read_text()
+
+    assert first == second
+
+
+def test_merge_settings_hooks_preserves_existing_keys(tmp_path: Path):
+    import json
+
+    settings_dir = tmp_path / ".claude"
+    settings_dir.mkdir(parents=True)
+    settings_path = settings_dir / "settings.json"
+    settings_path.write_text(json.dumps({
+        "permissions": {"allow": ["Read"]},
+        "hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": []}]},
+    }))
+
+    merge_settings_hooks(tmp_path)
+    data = json.loads(settings_path.read_text())
+
+    assert data["permissions"] == {"allow": ["Read"]}
+    assert len(data["hooks"]["PreToolUse"]) == 1
+    assert len(data["hooks"]["SessionStart"]) == 3
+
+
+def test_write_init_files_generates_hooks_by_default(tmp_path: Path):
+    cfg = build_project_config(_choices())
+    result = write_init_files(cfg, tmp_path)
+
+    assert result.hook_path is not None
+    assert result.hook_path.is_file()
+    assert result.settings_path is not None
+    assert result.settings_path.is_file()
+
+
+def test_write_init_files_skips_hooks_when_disabled(tmp_path: Path):
+    cfg = build_project_config(_choices())
+    result = write_init_files(cfg, tmp_path, generate_hooks=False)
+
+    assert result.hook_path is None
+    assert result.settings_path is None
+    assert not (tmp_path / ".claude" / "hooks" / HOOK_SCRIPT_NAME).exists()
+
+
+def test_config_init_generates_hooks_end_to_end(tmp_path: Path):
+    """Full config init creates hook script and settings.json."""
+    from typer.testing import CliRunner
+
+    from memoryhub_cli.main import app
+
+    runner = CliRunner()
+    answers = "3\n3\n4\nN\n\n\n"
+    result = runner.invoke(
+        app,
+        ["config", "init", "--dir", str(tmp_path)],
+        input=answers,
+    )
+    assert result.exit_code == 0, result.output
+
+    hook_path = tmp_path / ".claude" / "hooks" / HOOK_SCRIPT_NAME
+    settings_path = tmp_path / ".claude" / "settings.json"
+    assert hook_path.is_file()
+    assert settings_path.is_file()
+    assert "Wrote" in result.output
+
+
+def test_rule_file_presents_hook_as_expected_path():
+    """Loading rule should frame hooks as the expected path, not just an option."""
+    for pattern in ("eager", "lazy", "lazy_with_rebias", "jit"):
+        cfg = build_project_config(_choices(pattern=pattern))
+        out = render_rule_file(cfg)
+        assert "should appear" in out, f"pattern {pattern} missing expected-path framing"
+        assert "CLI not installed" in out, f"pattern {pattern} missing fallback reason"
