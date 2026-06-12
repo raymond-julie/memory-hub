@@ -6,6 +6,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from typing import Any
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
@@ -113,24 +114,27 @@ async def create_thread(
     expires_at = created_at + timedelta(days=ttl_days)
 
     # Create the thread
-    thread = ConversationThread(
-        id=uuid.uuid4(),
-        tenant_id=tenant_id,
-        scope=data.scope,
-        scope_id=None,  # Not on ConversationThreadCreate yet
-        owner_id=owner_id,
-        actor_id=actor_id,
-        driver_id=driver_id,
-        participant_ids=participant_ids,
-        participant_access=data.participant_access,
-        title=data.title,
-        a2a_context_id=data.a2a_context_id,
-        metadata_=data.metadata,
-        retention_policy=retention_policy,
-        created_at=created_at,
-        expires_at=expires_at,
-        status="active",
-    )
+    # Explicit None -> omit for JSON columns to avoid JSON null vs SQL NULL
+    thread_kwargs: dict[str, Any] = {
+        "id": uuid.uuid4(),
+        "tenant_id": tenant_id,
+        "scope": data.scope,
+        "owner_id": owner_id,
+        "actor_id": actor_id,
+        "driver_id": driver_id,
+        "participant_ids": participant_ids,
+        "title": data.title,
+        "a2a_context_id": data.a2a_context_id,
+        "retention_policy": retention_policy,
+        "created_at": created_at,
+        "expires_at": expires_at,
+        "status": "active",
+    }
+    if data.participant_access is not None:
+        thread_kwargs["participant_access"] = data.participant_access
+    if data.metadata is not None:
+        thread_kwargs["metadata_"] = data.metadata
+    thread = ConversationThread(**thread_kwargs)
 
     session.add(thread)
     await session.commit()
