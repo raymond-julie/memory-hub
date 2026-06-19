@@ -92,9 +92,14 @@ class TestRequiredParams:
             await memory(action="write", scope="user")
 
     @pytest.mark.asyncio
-    async def test_write_requires_scope(self):
-        with pytest.raises(ToolError, match="action='write' requires 'scope'"):
+    async def test_write_scope_defaults_to_user(self):
+        """scope defaults to 'user' when omitted -- passes validation."""
+        # Should pass scope validation and fail downstream (auth/DB).
+        # The key assertion is that it does NOT raise "requires 'scope'".
+        try:
             await memory(action="write", content="test")
+        except ToolError as exc:
+            assert "requires 'scope'" not in str(exc)
 
     @pytest.mark.asyncio
     async def test_delete_requires_memory_id(self):

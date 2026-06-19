@@ -180,8 +180,8 @@ async def memory(
         Project detail with members.
 
     Write actions:
-      write(content, scope, [project_id, options: weight, parent_id, branch_type, ...])
-        Create memory node or branch.
+      write(content, [scope, project_id, options: weight, parent_id, branch_type, ...])
+        Create memory node or branch. scope defaults to "user" if omitted.
       update(memory_id, [content, options: weight, metadata, domains])
         New version; old preserved for history.
       delete(memory_id, [project_id])
@@ -415,7 +415,8 @@ async def _dispatch_reconstruct(scope, project_id, opts, ctx):
 async def _dispatch_write(content, scope, project_id, opts, ctx):
     from src.tools.write_memory import write_memory
     _require("write", "content", content)
-    _require("write", "scope", scope)
+    # scope defaults to "user" if not provided (most agent writes are user-scoped)
+    scope = scope or "user"
     return await write_memory(
         content=content, scope=scope, project_id=project_id, ctx=ctx,
         **_forward(opts, _WRITE_OPTS),

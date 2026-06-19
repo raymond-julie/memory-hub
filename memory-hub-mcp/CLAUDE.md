@@ -45,16 +45,15 @@ podman build --platform linux/amd64 -f Containerfile -t my-mcp:latest .
 
 ## Architecture Overview
 
-### Component Loading System
+### Static Tool Registration
 
-The server uses dynamic component loading at startup via `src/core/loaders.py`:
+This server uses **static registration** in `src/main.py` (not the template's dynamic loader). Each tool module is explicitly imported and registered via `mcp.add_tool()`. The template's `UnifiedMCPServer`/`load_all` pipeline exists in `src/core/` but is not the active registration path -- it was designed for FastMCP 2 and does not register tools correctly in v3.
 
-1. **Entry point**: `src/main.py` creates `UnifiedMCPServer` and calls `load()` then `run()`
-2. **Server bootstrap**: `src/core/server.py` orchestrates loading and transport selection
-3. **Central MCP instance**: `src/core/app.py` exports the shared `mcp` FastMCP instance
-4. **Loaders**: `load_all()` discovers and imports modules from `src/tools/`, `src/resources/`, `src/prompts/`, `src/middleware/`
+1. **Entry point**: `src/main.py` imports each tool and calls `mcp.add_tool()` explicitly
+2. **Central MCP instance**: `src/core/app.py` exports the shared `mcp` FastMCP instance
+3. **Transport**: `src/core/server.py` handles STDIO vs HTTP transport selection
 
-Components register themselves via FastMCP decorators (`@mcp.tool`, `@mcp.resource`, `@mcp.prompt`) that reference the shared `mcp` instance from `src/core/app.py`.
+Tools use `@mcp.tool` decorators referencing the shared `mcp` instance from `src/core/app.py`. The decorator registers the tool on the instance, and `main.py`'s explicit `add_tool()` calls ensure they appear in `list_tools`.
 
 ### Import Convention
 
@@ -179,69 +178,34 @@ class MyMiddleware(Middleware):
         return result
 ```
 
-## Generator CLI
-
-**IMPORTANT**: `fips-agents` is a global CLI tool installed via pipx. Do NOT use `.venv/bin/fips-agents` - just run `fips-agents` directly.
-
-```bash
-# Generate tool
-fips-agents generate tool my_tool --description "Tool description" --async --with-context
-
-# Generate resource
-fips-agents generate resource my_resource --uri "data://my-resource" --mime-type "application/json"
-
-# Generate prompt
-fips-agents generate prompt my_prompt --description "Prompt description"
-
-# Generate middleware
-fips-agents generate middleware my_middleware --description "Middleware description" --async
-```
-
 ## Prompt Return Types
 
 - `str` - Simple string (default)
 - `PromptMessage` - Structured message with role
 - `list[PromptMessage]` - Multi-turn conversation
 
-## Pre-deployment
-
-Run `./remove_examples.sh` before first deployment to remove example code and reduce build context size.
-
 ## MCP Development Workflow
 
-This template provides slash commands for a structured development workflow:
+This server is mature (14 tools, 3 profiles, static registration). Initial scaffolding is complete. The slash commands below are for **adding new tools**, not for building from scratch.
 
-### Recommended Sequence
+### Adding New Tools
 
 ```
-/plan-tools              → Creates TOOLS_PLAN.md (planning only, no code)
+/plan-tools              → Update TOOLS_PLAN.md with new tool designs
         ↓
-/create-tools            → Generates and implements tools in parallel
+/create-tools            → Generate scaffolds and implement
         ↓
-/exercise-tools          → Tests ergonomics by role-playing as consuming agent
+/exercise-tools          → Test ergonomics by role-playing as consuming agent
         ↓
-/deploy-mcp PROJECT=x    → Deploys to OpenShift (optional, for remote MCP servers)
+/deploy-mcp PROJECT=x    → Deploy to OpenShift, verify with mcp-test-mcp
 ```
-
-### Slash Commands
 
 | Command | Purpose |
 |---------|---------|
-| `/plan-tools` | Read Anthropic's tool design article, create `TOOLS_PLAN.md` |
-| `/create-tools` | Generate scaffolds with `fips-agents`, implement in parallel subagents |
-| `/exercise-tools` | Role-play as consuming agent, test usability, refine |
-| `/deploy-mcp PROJECT=x` | Pre-flight checks, deploy to OpenShift, verify with mcp-test-mcp |
-
-### Tool Design Reference
-
-Before planning tools, the `/plan-tools` command reads:
-**https://www.anthropic.com/engineering/writing-tools-for-agents**
-
-Key principles:
-- Tools should have clear, descriptive names
-- Parameters should be intuitive and well-documented
-- Error messages should help agents recover
-- Fewer, more powerful tools are better than many simple ones
+| `/plan-tools` | Design new tools, update `TOOLS_PLAN.md` |
+| `/create-tools` | Generate scaffolds with `fips-agents`, implement |
+| `/exercise-tools` | Role-play as consuming agent, test usability |
+| `/deploy-mcp PROJECT=x` | Pre-flight checks, deploy, verify |
 
 ## Known Issues and Fixes
 

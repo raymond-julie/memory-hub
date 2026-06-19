@@ -74,14 +74,15 @@ async def write_memory(
     scope: Annotated[
         str,
         Field(
+            default="user",
             description=(
                 "One of: user, project, campaign, role, organizational, enterprise. "
-                "Most agent-created memories are 'user' scope. "
+                "Defaults to 'user' -- most agent-created memories are user-scoped. "
                 "For campaign scope, set owner_id to the campaign UUID and "
                 "provide project_id for enrollment verification."
             ),
         ),
-    ],
+    ] = "user",
     owner_id: Annotated[
         str | None,
         Field(
