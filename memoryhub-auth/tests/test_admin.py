@@ -270,6 +270,95 @@ class TestRotateApiKey:
 
 
 @pytest.mark.asyncio
+class TestTenantFiltering:
+    """Cross-tenant isolation tests for admin endpoints (#105)."""
+
+    async def _create_in_tenant(self, client, client_id: str, tenant: str) -> dict:
+        """Helper: create a client in a specific tenant, return the response."""
+        body = {
+            "client_id": client_id,
+            "client_name": f"{client_id} name",
+            "tenant_id": tenant,
+        }
+        resp = await client.post("/admin/clients", json=body, headers=ADMIN_HEADERS)
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    async def test_list_clients_filters_by_tenant(self, client):
+        """GET /admin/clients?tenant_id=X returns only that tenant's clients."""
+        await self._create_in_tenant(client, "tenant-a-agent", "tenant-a")
+        await self._create_in_tenant(client, "tenant-b-agent", "tenant-b")
+
+        resp = await client.get(
+            "/admin/clients", params={"tenant_id": "tenant-a"}, headers=ADMIN_HEADERS
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert all(c["tenant_id"] == "tenant-a" for c in data), (
+            f"Expected all clients to be in tenant-a, got: {data}"
+        )
+        ids = [c["client_id"] for c in data]
+        assert "tenant-a-agent" in ids
+        assert "tenant-b-agent" not in ids
+
+    async def test_list_clients_without_tenant_returns_all(self, client):
+        """GET /admin/clients without tenant_id returns all (backward compat)."""
+        await self._create_in_tenant(client, "compat-agent-a", "compat-tenant-a")
+        await self._create_in_tenant(client, "compat-agent-b", "compat-tenant-b")
+
+        resp = await client.get("/admin/clients", headers=ADMIN_HEADERS)
+        assert resp.status_code == 200, resp.text
+        ids = [c["client_id"] for c in resp.json()]
+        assert "compat-agent-a" in ids
+        assert "compat-agent-b" in ids
+
+    async def test_get_client_rejects_cross_tenant(self, client):
+        """GET /admin/clients/{id}?tenant_id=wrong returns 404."""
+        await self._create_in_tenant(client, "ct-get-agent", "tenant-a")
+
+        resp = await client.get(
+            "/admin/clients/ct-get-agent",
+            params={"tenant_id": "tenant-b"},
+            headers=ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404, resp.text
+
+    async def test_patch_client_rejects_cross_tenant(self, client):
+        """PATCH /admin/clients/{id}?tenant_id=wrong returns 404."""
+        await self._create_in_tenant(client, "ct-patch-agent", "tenant-a")
+
+        resp = await client.patch(
+            "/admin/clients/ct-patch-agent",
+            params={"tenant_id": "tenant-b"},
+            json={"client_name": "Should Not Update"},
+            headers=ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404, resp.text
+
+    async def test_rotate_secret_rejects_cross_tenant(self, client):
+        """POST /admin/clients/{id}/rotate-secret?tenant_id=wrong returns 404."""
+        await self._create_in_tenant(client, "ct-rotate-agent", "tenant-a")
+
+        resp = await client.post(
+            "/admin/clients/ct-rotate-agent/rotate-secret",
+            params={"tenant_id": "tenant-b"},
+            headers=ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404, resp.text
+
+    async def test_rotate_api_key_rejects_cross_tenant(self, client):
+        """POST /admin/clients/{id}/rotate-api-key?tenant_id=wrong returns 404."""
+        await self._create_in_tenant(client, "ct-apikey-agent", "tenant-a")
+
+        resp = await client.post(
+            "/admin/clients/ct-apikey-agent/rotate-api-key",
+            params={"tenant_id": "tenant-b"},
+            headers=ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.asyncio
 class TestRotateSecret:
     async def test_rotate_returns_new_secret(self, client, sample_client):
         resp = await client.post(
