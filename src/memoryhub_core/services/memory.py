@@ -1773,6 +1773,10 @@ def node_to_read(
     current_version_id: uuid.UUID | None = None,
 ) -> MemoryNodeRead:
     """Convert a MemoryNode ORM instance to a MemoryNodeRead schema."""
+    from memoryhub_core.services.temporal import compute_temporal_status
+
+    relevant_until = getattr(node, "relevant_until", None)
+
     return MemoryNodeRead(
         id=node.id,
         parent_id=node.parent_id,
@@ -1796,6 +1800,8 @@ def node_to_read(
         created_at=node.created_at,
         updated_at=node.updated_at,
         expires_at=node.expires_at,
+        relevant_until=relevant_until,
+        temporal_status=compute_temporal_status(relevant_until),
         has_children=has_children,
         has_rationale=has_rationale,
         branch_count=branch_count,
