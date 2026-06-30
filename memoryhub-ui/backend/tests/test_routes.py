@@ -849,6 +849,145 @@ class TestClientEndpoints:
 
 
 # ---------------------------------------------------------------------------
+# Client tenant forwarding (#105)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestClientTenantForwarding:
+    """Verify the BFF forwards ui_tenant_id to the auth admin API (#105)."""
+
+    async def test_list_clients_forwards_tenant_id(self, test_settings):
+        upstream = _mock_httpx_response(200, [_SAMPLE_CLIENT])
+        patcher, mock_http = _patch_admin_httpx(upstream)
+
+        app.dependency_overrides[get_settings] = lambda: test_settings
+        with patcher:
+            try:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as ac:
+                    await ac.get("/api/clients")
+
+                # The mock_http.request call should include params with tenant_id
+                call_kwargs = mock_http.request.call_args
+                assert call_kwargs is not None, "request() was not called"
+                params = call_kwargs.kwargs.get("params", {})
+                assert params.get("tenant_id") == test_settings.ui_tenant_id, (
+                    f"Expected tenant_id={test_settings.ui_tenant_id!r} in params, got {params}"
+                )
+            finally:
+                app.dependency_overrides.clear()
+
+    async def test_create_client_forwards_tenant_id(self, test_settings):
+        created = {**_SAMPLE_CLIENT, "client_secret": "s", "api_key": "mh-dev-abc"}
+        upstream = _mock_httpx_response(201, created)
+        patcher, mock_http = _patch_admin_httpx(upstream)
+
+        app.dependency_overrides[get_settings] = lambda: test_settings
+        with patcher:
+            try:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as ac:
+                    await ac.post(
+                        "/api/clients",
+                        json={
+                            "client_id": "x",
+                            "client_name": "X",
+                            "tenant_id": "t",
+                        },
+                    )
+
+                params = mock_http.request.call_args.kwargs.get("params", {})
+                assert params.get("tenant_id") == test_settings.ui_tenant_id
+            finally:
+                app.dependency_overrides.clear()
+
+    async def test_update_client_forwards_tenant_id(self, test_settings):
+        upstream = _mock_httpx_response(200, _SAMPLE_CLIENT)
+        patcher, mock_http = _patch_admin_httpx(upstream)
+
+        app.dependency_overrides[get_settings] = lambda: test_settings
+        with patcher:
+            try:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as ac:
+                    await ac.patch(
+                        "/api/clients/test-client",
+                        json={"client_name": "Renamed"},
+                    )
+
+                params = mock_http.request.call_args.kwargs.get("params", {})
+                assert params.get("tenant_id") == test_settings.ui_tenant_id
+            finally:
+                app.dependency_overrides.clear()
+
+    async def test_rotate_secret_forwards_tenant_id(self, test_settings):
+        upstream = _mock_httpx_response(
+            200, {"client_id": "x", "client_secret": "s", "api_key": "mh-dev-a"}
+        )
+        patcher, mock_http = _patch_admin_httpx(upstream)
+
+        app.dependency_overrides[get_settings] = lambda: test_settings
+        with patcher:
+            try:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as ac:
+                    await ac.post("/api/clients/test-client/rotate-secret")
+
+                params = mock_http.request.call_args.kwargs.get("params", {})
+                assert params.get("tenant_id") == test_settings.ui_tenant_id
+            finally:
+                app.dependency_overrides.clear()
+
+    async def test_rotate_api_key_forwards_tenant_id(self, test_settings):
+        upstream = _mock_httpx_response(
+            200, {"client_id": "x", "api_key": "mh-dev-a"}
+        )
+        patcher, mock_http = _patch_admin_httpx(upstream)
+
+        app.dependency_overrides[get_settings] = lambda: test_settings
+        with patcher:
+            try:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as ac:
+                    await ac.post("/api/clients/test-client/rotate-api-key")
+
+                params = mock_http.request.call_args.kwargs.get("params", {})
+                assert params.get("tenant_id") == test_settings.ui_tenant_id
+            finally:
+                app.dependency_overrides.clear()
+
+    async def test_users_endpoint_forwards_tenant_id(self, test_settings):
+        """GET /api/users sends tenant_id when fetching the client list."""
+        upstream = _mock_httpx_response(200, [_SAMPLE_CLIENT])
+        patcher, mock_http = _patch_admin_httpx(upstream)
+
+        # The users endpoint also queries the DB for memory stats.
+        stats_result = MagicMock()
+        stats_result.fetchall.return_value = []
+        db_session = _make_db_session([stats_result])
+
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[get_settings] = lambda: test_settings
+        with patcher:
+            try:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as ac:
+                    await ac.get("/api/users")
+
+                params = mock_http.request.call_args.kwargs.get("params", {})
+                assert params.get("tenant_id") == test_settings.ui_tenant_id
+            finally:
+                app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
 # Curation rules
 # ---------------------------------------------------------------------------
 
