@@ -23,11 +23,11 @@ class TestProfileDefinitions:
     def test_three_profiles_defined(self):
         assert {"compact", "full", "minimal"} == _VALID_PROFILES
 
-    def test_compact_has_3_tools(self):
-        assert len(_TOOLS_COMPACT) == 3
+    def test_compact_has_4_tools(self):
+        assert len(_TOOLS_COMPACT) == 4
 
-    def test_full_has_12_tools(self):
-        assert len(_TOOLS_FULL) == 12
+    def test_full_has_13_tools(self):
+        assert len(_TOOLS_FULL) == 13
 
     def test_minimal_has_5_tools(self):
         assert len(_TOOLS_MINIMAL) == 5

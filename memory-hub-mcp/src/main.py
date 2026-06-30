@@ -26,6 +26,7 @@ import os
 
 from fastmcp import FastMCP
 
+from src.tools.admin_memory import admin_memory
 from src.tools.delete_memory import delete_memory
 from src.tools.list_memory import list_memory
 from src.tools.manage_curation import manage_curation
@@ -92,13 +93,13 @@ _INSTRUCTIONS_MINIMAL = (
 
 # ── Profile-specific tool sets ─────────────────────────────────────────────
 
-_TOOLS_COMPACT = [register_session, memory, thread]
+_TOOLS_COMPACT = [register_session, memory, admin_memory, thread]
 
 _TOOLS_FULL = [
     register_session, write_memory, read_memory, update_memory,
     delete_memory, search_memory, list_memory,
     manage_session, manage_graph, manage_curation, manage_project,
-    thread,
+    admin_memory, thread,
 ]
 
 _TOOLS_MINIMAL = [register_session, search_memory, write_memory, read_memory, thread]

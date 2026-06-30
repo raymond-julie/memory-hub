@@ -53,6 +53,7 @@ async def check_similarity(
         MemoryNode.tenant_id == tenant_id,
         MemoryNode.is_current.is_(True),
         MemoryNode.deleted_at.is_(None),
+        MemoryNode.status == "active",
         MemoryNode.embedding.isnot(None),
     ]
     if exclude_id is not None:
@@ -116,6 +117,7 @@ async def get_similar_memories(
     source_stmt = select(MemoryNode).where(
         MemoryNode.id == memory_id,
         MemoryNode.deleted_at.is_(None),
+        MemoryNode.status == "active",
         MemoryNode.tenant_id == tenant_id,
     )
     source_result = await session.execute(source_stmt)
@@ -138,6 +140,7 @@ async def get_similar_memories(
         MemoryNode.tenant_id == tenant_id,
         MemoryNode.is_current.is_(True),
         MemoryNode.deleted_at.is_(None),
+        MemoryNode.status == "active",
         MemoryNode.embedding.isnot(None),
         MemoryNode.id != memory_id,
         distance_expr <= max_distance,

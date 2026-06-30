@@ -76,6 +76,14 @@ class MemoryNode(TimestampMixin, Base):
     # Content type classification for behavioral memory (#237)
     content_type: Mapped[str] = mapped_column(String(20), nullable=False, default="experiential")
 
+    # Content moderation status (#45). Governs visibility:
+    #   active       - visible to all authorized queries
+    #   quarantined  - visible only to admin queries
+    #   soft_deleted - visible only when explicitly requested
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="active",
+    )
+
     # Content-addressed entity IDs for deduplication (#247)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
@@ -144,6 +152,7 @@ class MemoryNode(TimestampMixin, Base):
         # sees the migration-created indexes in the DB but not in the metadata
         # and proposes to drop them on every autogenerate run.
         Index("ix_memory_nodes_deleted_at", "deleted_at"),
+        Index("ix_memory_nodes_status", "status"),
         Index("ix_memory_nodes_scope_id", "scope_id"),
         Index("ix_memory_nodes_domains", "domains", postgresql_using="gin"),
         Index(
