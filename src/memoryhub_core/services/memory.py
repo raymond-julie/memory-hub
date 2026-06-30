@@ -690,6 +690,7 @@ def _build_search_filters(
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> list | None:
     """Build the SQL filter list shared by search_memories and count_search_matches.
 
@@ -799,6 +800,34 @@ def _build_search_filters(
     if content_type is not None:
         filters.append(MemoryNode.content_type == content_type)
 
+    # Temporal status filter: restrict results by relevant_until semantics.
+    if temporal_status is not None and temporal_status != "all":
+        now_expr = func.now()
+        if temporal_status == "current":
+            # NULL (evergreen/version-bound) or future
+            filters.append(
+                or_(
+                    MemoryNode.relevant_until.is_(None),
+                    MemoryNode.relevant_until > now_expr,
+                )
+            )
+        elif temporal_status == "expired":
+            filters.append(
+                and_(
+                    MemoryNode.relevant_until.isnot(None),
+                    MemoryNode.relevant_until <= now_expr,
+                )
+            )
+        elif temporal_status == "expiring_soon":
+            seven_days = now_expr + timedelta(days=7)
+            filters.append(
+                and_(
+                    MemoryNode.relevant_until.isnot(None),
+                    MemoryNode.relevant_until > now_expr,
+                    MemoryNode.relevant_until <= seven_days,
+                )
+            )
+
     return filters
 
 
@@ -815,6 +844,7 @@ async def count_search_matches(
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> int:
     """Count memories matching the same filter set used by search_memories.
 
@@ -834,6 +864,7 @@ async def count_search_matches(
         role_names=role_names,
         entity_names=entity_names,
         content_type=content_type,
+        temporal_status=temporal_status,
     )
     if filters is None:
         return 0
@@ -858,6 +889,7 @@ async def search_memories(
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> list[tuple[MemoryNodeRead | MemoryNodeStub, float]]:
     """Search memories using pgvector cosine similarity.
 
@@ -885,6 +917,7 @@ async def search_memories(
         role_names=role_names,
         entity_names=entity_names,
         content_type=content_type,
+        temporal_status=temporal_status,
     )
     if filters is None:
         return []
@@ -975,6 +1008,7 @@ async def list_memories(
     project_ids: set[str] | None = None,
     role_names: set[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> tuple[list[MemoryNodeRead | MemoryNodeStub], str | None]:
     """Enumerate memories without semantic ranking.
 
@@ -988,6 +1022,7 @@ async def list_memories(
         project_ids=project_ids,
         role_names=role_names,
         content_type=content_type,
+        temporal_status=temporal_status,
     )
     if filters is None:
         return [], None
@@ -1115,6 +1150,7 @@ async def search_memories_with_focus(
     graph_boost_weight: float = 0.2,
     entity_names: list[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> FocusedSearchResult:
     """Two-vector retrieval with session focus bias.
 
@@ -1165,6 +1201,7 @@ async def search_memories_with_focus(
             role_names=role_names,
             entity_names=entity_names,
             content_type=content_type,
+            temporal_status=temporal_status,
         )
         return FocusedSearchResult(results=plain)
 
@@ -1187,6 +1224,7 @@ async def search_memories_with_focus(
         role_names=role_names,
         entity_names=entity_names,
         content_type=content_type,
+        temporal_status=temporal_status,
     )
     if filters is None:
         return FocusedSearchResult(
