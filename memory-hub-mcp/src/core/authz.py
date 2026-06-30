@@ -88,6 +88,7 @@ def get_claims_from_context() -> dict:
             "identity_type": token.claims.get("identity_type", "user"),
             "tenant_id": token.claims.get("tenant_id", "default"),
             "scopes": list(token.scopes),
+            "project_memberships": token.claims.get("project_memberships", []),
         }
         log.debug("Resolved JWT identity via get_access_token: sub=%s", claims["sub"])
         return claims
@@ -106,6 +107,7 @@ def get_claims_from_context() -> dict:
             "identity_type": jwt_claims.get("identity_type", "user"),
             "tenant_id": jwt_claims.get("tenant_id", "default"),
             "scopes": scopes,
+            "project_memberships": jwt_claims.get("project_memberships", []),
         }
         log.debug("Resolved JWT identity via Authorization header: sub=%s", claims["sub"])
         return claims
