@@ -1517,7 +1517,7 @@ async def search_memories_with_focus(
     # knowing whose memories to check).
     pattern_signals: list[PatternSignal] = []
     if owner_id and use_pgvector:
-        try:
+        try:  # noqa: SIM105 -- suppress() can't capture the awaited result
             pattern_signals = await detect_patterns(
                 query_embedding,
                 session,

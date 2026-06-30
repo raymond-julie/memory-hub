@@ -16,6 +16,22 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from pydantic import Field
+from src.core.app import mcp
+from src.core.audit import record_event
+from src.core.authz import (
+    PROJECT_ISOLATION_ENABLED,
+    ROLE_ISOLATION_ENABLED,
+    AuthenticationError,
+    build_authorized_scopes,
+    get_claims_from_context,
+    get_tenant_filter,
+)
+from src.tools._deps import (
+    get_db_session,
+    get_embedding_service,
+    get_reranker_service,
+    release_db_session,
+)
 
 from memoryhub_core.models.memory import MemoryNode
 from memoryhub_core.models.schemas import MemoryNodeRead, MemoryNodeStub, MemoryScope
@@ -45,22 +61,6 @@ from memoryhub_core.services.role import get_roles_for_user
 from memoryhub_core.services.valkey_client import (
     ValkeyUnavailableError,
     get_valkey_client,
-)
-from src.core.app import mcp
-from src.core.audit import record_event
-from src.core.authz import (
-    PROJECT_ISOLATION_ENABLED,
-    ROLE_ISOLATION_ENABLED,
-    AuthenticationError,
-    build_authorized_scopes,
-    get_claims_from_context,
-    get_tenant_filter,
-)
-from src.tools._deps import (
-    get_db_session,
-    get_embedding_service,
-    get_reranker_service,
-    release_db_session,
 )
 
 logger = logging.getLogger(__name__)

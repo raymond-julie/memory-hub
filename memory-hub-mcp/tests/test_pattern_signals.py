@@ -11,10 +11,11 @@ from memoryhub_core.services.pattern import PatternSignal
 
 def test_pattern_signal_import_from_search_tool():
     """The search_memory module can import pattern detection."""
-    from src.tools.search_memory import detect_patterns, PatternSignal as PS
+    from src.tools.search_memory import PatternSignal as ToolPatternSignal
+    from src.tools.search_memory import detect_patterns
 
     assert detect_patterns is not None
-    assert PS is PatternSignal
+    assert ToolPatternSignal is PatternSignal
 
 
 def test_pattern_signal_to_response_dict():
