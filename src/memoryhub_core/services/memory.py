@@ -339,14 +339,18 @@ async def read_memory(
         MemoryNode.id == memory_id,
         MemoryNode.deleted_at.is_(None),
         MemoryNode.tenant_id == tenant_id,
+        # Non-admin read: only active memories are visible.
+        # Quarantined and soft_deleted require admin_memory tool.
+        MemoryNode.status == "active",
     )
     result = await session.execute(stmt)
     node = result.scalar_one_or_none()
 
     if node is None:
-        # Cross-tenant hits land here indistinguishably from nonexistent
-        # rows. Do NOT log the mismatch at WARNING or higher -- anything
-        # above debug leaks existence through log aggregation.
+        # Cross-tenant hits, quarantined, and soft_deleted all land here
+        # indistinguishably from nonexistent rows. Do NOT log the mismatch
+        # at WARNING or higher -- anything above debug leaks existence
+        # through log aggregation.
         raise MemoryNotFoundError(memory_id)
 
     has_children, has_rationale, branch_count = await _compute_branch_flags(node, session)
@@ -692,6 +696,7 @@ def _build_search_filters(
     entity_names: list[str] | None = None,
     content_type: str | None = None,
     temporal_status: str | None = None,
+    include_statuses: list[str] | None = None,
 ) -> list | None:
     """Build the SQL filter list shared by search_memories and count_search_matches.
 
@@ -707,6 +712,13 @@ def _build_search_filters(
         MemoryNode.deleted_at.is_(None),
         MemoryNode.tenant_id == tenant_id,
     ]
+    # Status filter: default to active-only so quarantined and
+    # soft_deleted memories are invisible to regular queries.
+    # Admin callers pass include_statuses to widen visibility.
+    if include_statuses:
+        filters.append(MemoryNode.status.in_(include_statuses))
+    else:
+        filters.append(MemoryNode.status == "active")
     if current_only:
         filters.append(MemoryNode.is_current.is_(True))
     if scope is not None:
