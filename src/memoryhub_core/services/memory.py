@@ -739,14 +739,22 @@ def _build_search_filters(
                 # memories are visible to this caller.
                 continue
             if scope_name == "project":
-                if project_ids:
+                # Use explicitly-passed project_ids when available (may
+                # be a narrower filter, e.g. single project_id from the
+                # tool parameter). Fall back to the authorized_scopes
+                # value when it carries a list of project IDs from the
+                # claims pipeline (#64).
+                effective_project_ids = project_ids
+                if not effective_project_ids and isinstance(required_owner, list):
+                    effective_project_ids = set(required_owner)
+                if effective_project_ids:
                     scope_conditions.append(
                         and_(
                             MemoryNode.scope == "project",
-                            MemoryNode.scope_id.in_(project_ids),
+                            MemoryNode.scope_id.in_(effective_project_ids),
                         )
                     )
-                # If project_ids is empty/None, skip — no project
+                # If no project IDs from either source, skip — no project
                 # memories are visible to this caller.
                 continue
             if scope_name == "role":

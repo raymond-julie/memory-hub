@@ -88,6 +88,7 @@ def get_claims_from_context() -> dict:
             "identity_type": token.claims.get("identity_type", "user"),
             "tenant_id": token.claims.get("tenant_id", "default"),
             "scopes": list(token.scopes),
+            "project_memberships": token.claims.get("project_memberships", []),
         }
         log.debug("Resolved JWT identity via get_access_token: sub=%s", claims["sub"])
         return claims
@@ -106,6 +107,7 @@ def get_claims_from_context() -> dict:
             "identity_type": jwt_claims.get("identity_type", "user"),
             "tenant_id": jwt_claims.get("tenant_id", "default"),
             "scopes": scopes,
+            "project_memberships": jwt_claims.get("project_memberships", []),
         }
         log.debug("Resolved JWT identity via Authorization header: sub=%s", claims["sub"])
         return claims
@@ -125,6 +127,7 @@ def get_claims_from_context() -> dict:
             "identity_type": user.get("identity_type", "user"),
             "tenant_id": user.get("tenant_id", "default"),
             "scopes": scopes,
+            "project_memberships": user.get("project_memberships", []),
         }
         log.debug("Resolved session identity: sub=%s", claims["sub"])
         return claims
@@ -239,11 +242,19 @@ def authorize_write(
     return False
 
 
-def build_authorized_scopes(claims: dict) -> dict[str, str | None]:
+def build_authorized_scopes(claims: dict) -> dict[str, str | list[str] | None]:
     """Build scope visibility filter from claims for search queries.
 
-    Returns a dict mapping scope names to required owner_id values.
-    None means no owner filter (open read for that tier).
+    Returns a dict mapping scope names to required owner_id values:
+      - ``str``: exact owner_id match (user tier)
+      - ``list[str]``: set of allowed scope_ids (project tier, when
+        project_memberships are present in claims)
+      - ``None``: no owner filter (open read for that tier)
+
+    For the project tier, when the caller has project read access and
+    project_memberships are present in claims, the value is the list
+    of project IDs the caller belongs to. When memberships are empty,
+    the project tier is omitted entirely (no project memories visible).
 
     NOTE: This function does NOT include the tenant_id filter. Service-layer
     callers must combine the result of this function with `get_tenant_filter`
@@ -251,7 +262,7 @@ def build_authorized_scopes(claims: dict) -> dict[str, str | None]:
     """
     scopes = claims.get("scopes", [])
     caller_id = claims["sub"]
-    result: dict[str, str | None] = {}
+    result: dict[str, str | list[str] | None] = {}
 
     has_blanket_read = "memory:read" in scopes
 
@@ -259,6 +270,14 @@ def build_authorized_scopes(claims: dict) -> dict[str, str | None]:
         if has_blanket_read or f"memory:read:{tier}" in scopes:
             if tier == "user":
                 result[tier] = caller_id
+            elif tier == "project" and PROJECT_ISOLATION_ENABLED:
+                # When project isolation is on, use claims-based membership
+                # to restrict project visibility. Empty membership = no
+                # project memories visible (tier omitted from result).
+                memberships = claims.get("project_memberships", [])
+                if memberships:
+                    result[tier] = list(memberships)
+                # else: omit project tier entirely
             else:
                 result[tier] = None
 

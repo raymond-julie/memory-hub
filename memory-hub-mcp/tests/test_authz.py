@@ -222,8 +222,23 @@ def test_build_authorized_scopes_blanket_read():
     assert result["user"] == "alice"
     assert result["organizational"] is None
     assert result["enterprise"] is None
-    assert result["project"] is None
+    # With PROJECT_ISOLATION_ENABLED (default), project tier is omitted when
+    # no project_memberships are in claims. Add memberships to see the tier.
+    assert "project" not in result
     assert result["role"] is None
+
+
+def test_build_authorized_scopes_blanket_read_with_memberships():
+    """Blanket read with project memberships includes project tier."""
+    claims = {
+        "sub": "alice",
+        "scopes": ["memory:read"],
+        "project_memberships": ["proj-1"],
+    }
+    result = build_authorized_scopes(claims)
+    assert result["user"] == "alice"
+    assert result["project"] == ["proj-1"]
+    assert result["organizational"] is None
 
 
 def test_build_authorized_scopes_user_only():

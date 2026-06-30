@@ -779,25 +779,32 @@ async def search_memory(
             await release_db_session(gen_for_campaign)
 
     # Resolve project memberships for the caller.
-    # When PROJECT_ISOLATION_ENABLED is False, skip resolution — the
+    # When PROJECT_ISOLATION_ENABLED is False, skip resolution -- the
     # search filter's generic branch handles project scope without
     # scope_id filtering, and authorize_read returns True.
     #
     # When a specific project_id is given, restrict results to THAT
-    # project only.  Without project_id, include all projects the
-    # caller belongs to so project-scoped memories stay discoverable.
+    # project only.  Without project_id, use claims-based memberships
+    # (populated at registration by _resolve_project_memberships) as
+    # the primary source. Fall back to a DB query for sessions that
+    # predate the claims pipeline or when mid-session auto-enrollment
+    # needs the freshest state.
     project_ids: set[str] | None = None
     if PROJECT_ISOLATION_ENABLED:
         if project_id:
             project_ids = {project_id}
         else:
-            session_for_project, gen_for_project = await get_db_session()
-            try:
-                project_ids = await get_projects_for_user(
-                    session_for_project, claims["sub"],
-                )
-            finally:
-                await release_db_session(gen_for_project)
+            claims_memberships = claims.get("project_memberships", [])
+            if claims_memberships:
+                project_ids = set(claims_memberships)
+            else:
+                session_for_project, gen_for_project = await get_db_session()
+                try:
+                    project_ids = await get_projects_for_user(
+                        session_for_project, claims["sub"],
+                    )
+                finally:
+                    await release_db_session(gen_for_project)
 
     # Resolve role assignments for the caller (table + JWT claims).
     role_names: set[str] | None = None

@@ -23,7 +23,7 @@ from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from memoryhub_core.config import AppSettings
-from memoryhub_core.services.project import list_projects_for_tenant
+from memoryhub_core.services.project import get_projects_for_user, list_projects_for_tenant
 from memoryhub_core.services.push_subscriber import (
     ensure_memoryhub_subscriber_running,
     stop_memoryhub_subscriber,
@@ -168,6 +168,39 @@ async def _fetch_user_projects(
             await release_db_session(gen)
 
 
+async def _resolve_project_memberships(
+    user: dict[str, Any],
+) -> list[str]:
+    """Merge ConfigMap-declared and DB-enrolled project memberships.
+
+    The ConfigMap provides a static bootstrap list; the DB has the
+    authoritative runtime state (including auto-enrollments from
+    write_memory). Returns the sorted union so the session carries
+    the fullest membership snapshot available at registration time.
+
+    Non-fatal: returns ConfigMap memberships alone if the DB is
+    unreachable, so registration is never blocked.
+    """
+    configmap_projects = set(user.get("project_memberships", []))
+
+    gen = None
+    try:
+        session, gen = await get_db_session()
+        db_projects = await get_projects_for_user(session, user["user_id"])
+        merged = configmap_projects | db_projects
+        return sorted(merged)
+    except Exception as exc:
+        logger.debug(
+            "Failed to resolve DB project memberships for %s: %s",
+            user.get("user_id", "?"),
+            exc,
+        )
+        return sorted(configmap_projects)
+    finally:
+        if gen is not None:
+            await release_db_session(gen)
+
+
 @mcp.tool(
     annotations={
         "readOnlyHint": False,
@@ -228,6 +261,14 @@ async def register_session(
         tenant = get_tenant_filter(jwt_claims)
         await _start_push_for_session(session_id, ctx)
         projects = await _fetch_user_projects(user_id, tenant)
+
+        # Resolve project memberships from DB for JWT users.
+        jwt_user_stub = {
+            "user_id": user_id,
+            "project_memberships": jwt_claims.get("project_memberships", []),
+        }
+        project_memberships = await _resolve_project_memberships(jwt_user_stub)
+
         record_event(
             event_type="session.registered",
             actor_id=user_id,
@@ -243,6 +284,7 @@ async def register_session(
             "user_id": user_id,
             "name": jwt_claims.get("name", user_id),
             "scopes": list(token.scopes),
+            "project_memberships": project_memberships,
             "auth_method": "jwt",
             "default_driver_id": default_driver_id,
             "projects": projects,
@@ -280,6 +322,11 @@ async def register_session(
             "Keys follow the format: mh-dev-<hex>."
         )
 
+    # Resolve project memberships: merge ConfigMap bootstrap with DB state.
+    # This must happen before set_session() so the session user dict
+    # carries project_memberships for get_claims_from_context() to extract.
+    user["project_memberships"] = await _resolve_project_memberships(user)
+
     app_settings = AppSettings()
     ttl = app_settings.session_ttl_seconds
     expires_at = set_session(user, ttl_seconds=ttl)
@@ -312,6 +359,7 @@ async def register_session(
         "user_id": user["user_id"],
         "name": user["name"],
         "scopes": user["scopes"],
+        "project_memberships": user["project_memberships"],
         "expires_at": expires_at.isoformat(),
         "session_ttl_seconds": ttl,
         "default_driver_id": default_driver_id,

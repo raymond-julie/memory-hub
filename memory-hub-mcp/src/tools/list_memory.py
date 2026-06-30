@@ -124,13 +124,17 @@ async def list_memory(
         if project_id:
             project_ids = {project_id}
         else:
-            session_p, gen_p = await get_db_session()
-            try:
-                project_ids = await get_projects_for_user(
-                    session_p, claims["sub"],
-                )
-            finally:
-                await release_db_session(gen_p)
+            claims_memberships = claims.get("project_memberships", [])
+            if claims_memberships:
+                project_ids = set(claims_memberships)
+            else:
+                session_p, gen_p = await get_db_session()
+                try:
+                    project_ids = await get_projects_for_user(
+                        session_p, claims["sub"],
+                    )
+                finally:
+                    await release_db_session(gen_p)
 
     role_names: set[str] | None = None
     if ROLE_ISOLATION_ENABLED:
