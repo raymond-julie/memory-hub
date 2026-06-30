@@ -668,6 +668,17 @@ async def search_memory(
             ),
         ),
     ] = None,
+    temporal_status: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Filter by temporal status. 'current' shows memories with no "
+                "semantic expiry or expiry in the future. 'expired' shows memories "
+                "past their relevant_until date. 'expiring_soon' shows memories "
+                "expiring within 7 days. 'all' disables the filter (default)."
+            ),
+        ),
+    ] = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """Search memories using semantic similarity.
@@ -858,6 +869,7 @@ async def search_memory(
                 graph_boost_weight=graph_boost_weight,
                 entity_names=entities,
                 content_type=content_type,
+                temporal_status=temporal_status,
             )
             graph_bundle = bundle
             results = bundle.results
@@ -886,6 +898,7 @@ async def search_memory(
                 role_names=role_names,
                 entity_names=entities,
                 content_type=content_type,
+                temporal_status=temporal_status,
             )
 
         # Count all matching memories under the same filter set so the agent
@@ -901,6 +914,7 @@ async def search_memory(
             project_ids=project_ids,
             role_names=role_names,
             entity_names=entities,
+            temporal_status=temporal_status,
         )
 
         # Apply post-retrieval domain boost only on the non-focus path.

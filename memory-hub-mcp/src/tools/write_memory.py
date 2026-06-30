@@ -190,6 +190,17 @@ async def write_memory(
             ),
         ),
     ] = None,
+    relevant_until: Annotated[
+        str | None,
+        Field(
+            description=(
+                "ISO 8601 timestamp for semantic expiry (e.g. '2026-12-31T23:59:59Z'). "
+                "When set, indicates when this memory's content becomes stale. "
+                "Distinct from storage lifecycle (expires_at). Omit to let the "
+                "temporal classifier auto-detect from content."
+            ),
+        ),
+    ] = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """Create a new memory node or branch in the memory tree.
@@ -339,6 +350,22 @@ async def write_memory(
                 f"Invalid parent_id format: '{parent_id}'. Must be a valid UUID."
             ) from None
 
+    # Parse relevant_until string to datetime if provided.
+    parsed_relevant_until = None
+    if relevant_until is not None:
+        from datetime import datetime as dt, UTC as _UTC
+
+        try:
+            parsed_relevant_until = dt.fromisoformat(relevant_until)
+            # Ensure timezone-aware
+            if parsed_relevant_until.tzinfo is None:
+                parsed_relevant_until = parsed_relevant_until.replace(tzinfo=_UTC)
+        except (ValueError, TypeError):
+            raise ToolError(
+                f"Invalid relevant_until format: '{relevant_until}'. "
+                "Must be a valid ISO 8601 timestamp (e.g. '2026-12-31T23:59:59Z')."
+            ) from None
+
     # Build the create schema with validation
     try:
         node_create = MemoryNodeCreate(
@@ -354,6 +381,7 @@ async def write_memory(
             domains=domains,
             scope_id=scope_id_value,
             content_type=content_type,
+            relevant_until=parsed_relevant_until,
         )
     except ValidationError as exc:
         errors = exc.errors()

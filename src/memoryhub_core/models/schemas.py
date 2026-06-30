@@ -82,6 +82,10 @@ class MemoryNodeCreate(BaseModel):
         default=None, description="Crosscutting knowledge domain tags (e.g., 'React', 'Spring Boot')"
     )
     content_type: ContentType = Field(default=ContentType.EXPERIENTIAL, description="Memory classification type")
+    relevant_until: datetime | None = Field(
+        default=None,
+        description="Semantic expiry timestamp. NULL means evergreen or version-bound.",
+    )
 
 
 class MemoryNodeUpdate(BaseModel):
@@ -136,6 +140,8 @@ class MemoryNodeRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     expires_at: datetime | None = None
+    relevant_until: datetime | None = None
+    temporal_status: str | None = None  # computed by service layer
     has_children: bool = False  # populated by service layer, not from ORM
     has_rationale: bool = False  # populated by service layer, not from ORM
     branch_count: int = 0  # populated by service layer via COUNT(*) over children

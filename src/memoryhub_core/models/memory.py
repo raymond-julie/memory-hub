@@ -91,6 +91,10 @@ class MemoryNode(TimestampMixin, Base):
     # TTL for superseded versions (current versions never expire)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
+    # Semantic expiry: when the content becomes stale (distinct from expires_at
+    # which is storage lifecycle). NULL = evergreen or version-bound.
+    relevant_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+
     # Embedding (384 dims for sentence-transformers/all-MiniLM-L6-v2)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
 
@@ -146,6 +150,11 @@ class MemoryNode(TimestampMixin, Base):
             "ix_memory_nodes_expires_at",
             "expires_at",
             postgresql_where=text("expires_at IS NOT NULL"),
+        ),
+        Index(
+            "ix_memory_nodes_relevant_until",
+            "relevant_until",
+            postgresql_where=text("relevant_until IS NOT NULL"),
         ),
     )
 

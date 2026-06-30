@@ -187,6 +187,7 @@ async def create_memory(
         metadata_=node_metadata,
         domains=data.domains,
         content_type=data.content_type,
+        relevant_until=data.relevant_until,
         embedding=embedding,
         is_current=True,
         version=1,
@@ -195,6 +196,12 @@ async def create_memory(
         created_at=now,
         updated_at=now,
     )
+
+    # Run temporal classifier when caller didn't set relevant_until explicitly.
+    if node.relevant_until is None:
+        from memoryhub_core.services.temporal import classify_temporal
+
+        node.relevant_until = classify_temporal(data.content, now)
 
     session.add(node)
     await session.commit()
@@ -474,6 +481,14 @@ async def update_memory(
         db_content = old_node.content
         storage_type = old_node.storage_type
 
+    # Recompute relevant_until when content changes; inherit from old node otherwise.
+    if content_changed:
+        from memoryhub_core.services.temporal import classify_temporal
+
+        new_relevant_until = classify_temporal(new_content, now)
+    else:
+        new_relevant_until = old_node.relevant_until
+
     new_node = MemoryNode(
         id=new_id,
         content=db_content,
@@ -489,6 +504,7 @@ async def update_memory(
         branch_type=old_node.branch_type,
         metadata_=new_metadata,
         domains=new_domains,
+        relevant_until=new_relevant_until,
         embedding=embedding,
         is_current=True,
         version=old_node.version + 1,
@@ -674,6 +690,7 @@ def _build_search_filters(
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> list | None:
     """Build the SQL filter list shared by search_memories and count_search_matches.
 
@@ -783,6 +800,34 @@ def _build_search_filters(
     if content_type is not None:
         filters.append(MemoryNode.content_type == content_type)
 
+    # Temporal status filter: restrict results by relevant_until semantics.
+    if temporal_status is not None and temporal_status != "all":
+        now_expr = func.now()
+        if temporal_status == "current":
+            # NULL (evergreen/version-bound) or future
+            filters.append(
+                or_(
+                    MemoryNode.relevant_until.is_(None),
+                    MemoryNode.relevant_until > now_expr,
+                )
+            )
+        elif temporal_status == "expired":
+            filters.append(
+                and_(
+                    MemoryNode.relevant_until.isnot(None),
+                    MemoryNode.relevant_until <= now_expr,
+                )
+            )
+        elif temporal_status == "expiring_soon":
+            seven_days = now_expr + timedelta(days=7)
+            filters.append(
+                and_(
+                    MemoryNode.relevant_until.isnot(None),
+                    MemoryNode.relevant_until > now_expr,
+                    MemoryNode.relevant_until <= seven_days,
+                )
+            )
+
     return filters
 
 
@@ -799,6 +844,7 @@ async def count_search_matches(
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> int:
     """Count memories matching the same filter set used by search_memories.
 
@@ -818,6 +864,7 @@ async def count_search_matches(
         role_names=role_names,
         entity_names=entity_names,
         content_type=content_type,
+        temporal_status=temporal_status,
     )
     if filters is None:
         return 0
@@ -842,6 +889,7 @@ async def search_memories(
     role_names: set[str] | None = None,
     entity_names: list[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> list[tuple[MemoryNodeRead | MemoryNodeStub, float]]:
     """Search memories using pgvector cosine similarity.
 
@@ -869,6 +917,7 @@ async def search_memories(
         role_names=role_names,
         entity_names=entity_names,
         content_type=content_type,
+        temporal_status=temporal_status,
     )
     if filters is None:
         return []
@@ -959,6 +1008,7 @@ async def list_memories(
     project_ids: set[str] | None = None,
     role_names: set[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> tuple[list[MemoryNodeRead | MemoryNodeStub], str | None]:
     """Enumerate memories without semantic ranking.
 
@@ -972,6 +1022,7 @@ async def list_memories(
         project_ids=project_ids,
         role_names=role_names,
         content_type=content_type,
+        temporal_status=temporal_status,
     )
     if filters is None:
         return [], None
@@ -1099,6 +1150,7 @@ async def search_memories_with_focus(
     graph_boost_weight: float = 0.2,
     entity_names: list[str] | None = None,
     content_type: str | None = None,
+    temporal_status: str | None = None,
 ) -> FocusedSearchResult:
     """Two-vector retrieval with session focus bias.
 
@@ -1149,6 +1201,7 @@ async def search_memories_with_focus(
             role_names=role_names,
             entity_names=entity_names,
             content_type=content_type,
+            temporal_status=temporal_status,
         )
         return FocusedSearchResult(results=plain)
 
@@ -1171,6 +1224,7 @@ async def search_memories_with_focus(
         role_names=role_names,
         entity_names=entity_names,
         content_type=content_type,
+        temporal_status=temporal_status,
     )
     if filters is None:
         return FocusedSearchResult(
@@ -1757,6 +1811,10 @@ def node_to_read(
     current_version_id: uuid.UUID | None = None,
 ) -> MemoryNodeRead:
     """Convert a MemoryNode ORM instance to a MemoryNodeRead schema."""
+    from memoryhub_core.services.temporal import compute_temporal_status
+
+    relevant_until = getattr(node, "relevant_until", None)
+
     return MemoryNodeRead(
         id=node.id,
         parent_id=node.parent_id,
@@ -1780,6 +1838,8 @@ def node_to_read(
         created_at=node.created_at,
         updated_at=node.updated_at,
         expires_at=node.expires_at,
+        relevant_until=relevant_until,
+        temporal_status=compute_temporal_status(relevant_until),
         has_children=has_children,
         has_rationale=has_rationale,
         branch_count=branch_count,
