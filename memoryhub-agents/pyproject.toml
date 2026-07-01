@@ -12,6 +12,9 @@ dependencies = [
     "memoryhub>=0.1.0",  # MemoryHub SDK for MCP client
 ]
 
+[project.scripts]
+fact-checker = "memoryhub_agents.plugins.run_fact_checker:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
