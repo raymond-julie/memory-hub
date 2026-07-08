@@ -1,24 +1,75 @@
 # Architecture
 
-MemoryHub is a Kubernetes-native agent memory system for OpenShift AI. It provides centralized, governed memory that consumers reach through four surfaces — agents over MCP, a typed Python SDK, a CLI, and a dashboard UI — all routed through a single MCP server backed by PostgreSQL with pgvector and protected by an OAuth 2.1 authorization server with service-layer RBAC.
+MemoryHub is a Kubernetes-native agent memory system for OpenShift AI. It provides centralized, governed memory behind a single service core -- an MCP server backed by PostgreSQL with pgvector and protected by an OAuth 2.1 authorization server with service-layer RBAC. Consumers reach that core through multiple interchangeable **surfaces**; today those are agents over MCP, a typed Python SDK, a CLI, a dashboard UI, and agent-harness hooks, and the set is expected to grow (e.g., agent plugins, platform connectors).
 
 This document covers the big picture. Subsystem details live in their own docs (see [SYSTEMS.md](SYSTEMS.md)).
 
-## System Overview
+## Consumer surfaces
+
+A *surface* is any way a human or agent reaches MemoryHub. Surfaces are deliberately thin: all of them converge on the same MCP server and service layer, which is where authorization, curation, and governance are enforced. No surface talks to PostgreSQL directly.
+
+| Surface | Consumers | Path to the core |
+|---|---|---|
+| MCP | Agents (Claude Code, LlamaStack, custom) | MCP protocol → MCP server |
+| Python SDK (`memoryhub`) | Applications, integrations (e.g. kagenti-adk) | SDK → MCP server |
+| CLI (`memoryhub-cli`) | Humans, scripts, agent harnesses | CLI → SDK → MCP server |
+| Dashboard UI | Administrators | React frontend → BFF → MCP server |
+| Agent-harness hooks | SessionStart / UserPromptSubmit / Stop hooks | Hooks → CLI → SDK → MCP server |
+
+Rules for adding a new surface (a plugin, a platform connector, an editor extension, ...):
+
+1. **Go through the MCP server** — either speak MCP directly or build on the SDK. Never bypass the service layer; RBAC and curation live there.
+2. **Authenticate like everyone else** — OAuth 2.1 `client_credentials` (or the dev-path API key shim until it's retired). No new auth mechanisms per surface.
+3. **Stay stateless where possible** — server-side session state is the exception, not the rule (see the stateless-focus discussion below).
+4. **Register as a consumer** — add the surface to the same-commit consumer audit list in [CONTRIBUTING.md](../CONTRIBUTING.md) if it parses MCP response shapes.
+
+## Conceptual overview
+
+AI agents are stateless by default -- each conversation starts from scratch. MemoryHub gives agents persistent, governed memory so that preferences, decisions, and facts learned in one conversation are available in the next, across agents and across projects.
+
+```mermaid
+graph LR
+    AGENTS["AI Agents<br/>Claude Code, LlamaStack,<br/>custom"]
+
+    subgraph "MemoryHub"
+        MCP["MCP Server<br/>read + write memories"]
+        GOV["Governance<br/>scoped access control"]
+    end
+
+    DB[("PostgreSQL + pgvector<br/>persistent storage")]
+
+    AGENTS -- "learns preferences,<br/>decisions, facts" --> MCP
+    MCP -- "relevant context<br/>for this conversation" --> AGENTS
+    GOV --- MCP
+    MCP --> DB
+
+    style GOV fill:#f9f,stroke:#333
+```
+
+Memories are organized as a tree with scopes (user, project, campaign, role, organizational, enterprise) and weights that control how prominently they appear in search results. An OAuth 2.1 authorization server ensures agents only see memories they're authorized to access.
+
+## System overview (detailed)
 
 ```mermaid
 graph TB
     subgraph "Consumer surfaces"
-        AGENT[Agents over MCP<br/>Claude Code, kagenti,<br/>LlamaStack, custom]
+        AGENT[Agents over MCP<br/>Claude Code, LlamaStack,<br/>custom]
         SDK[Python SDK<br/>memoryhub on PyPI]
         CLI[memoryhub-cli]
         UI_FE[Dashboard frontend<br/>React + PatternFly 6]
+        HOOKS[Agent harness hooks<br/>SessionStart, UserPromptSubmit,<br/>Stop]
     end
 
     subgraph "memory-hub-mcp namespace"
-        MCP[MCP Server<br/>FastMCP 3<br/>3 tools &#40;compact profile&#41;]
+        MCP[MCP Server<br/>FastMCP 3<br/>compact profile: 4 tools<br/>&#40;see memory-hub-mcp/ARCHITECTURE.md&#41;]
         UI_BE[Dashboard BFF<br/>FastAPI]
         OAP[oauth-proxy<br/>sidecar]
+        VK[Valkey<br/>job queues + push]
+        FC[Fact Checker<br/>CronJob, daily]
+    end
+
+    subgraph "memoryhub-agents namespace"
+        TR[Trace Reviewer<br/>Deployment]
     end
 
     subgraph "memoryhub-auth namespace"
@@ -43,7 +94,13 @@ graph TB
     AGENT --> MCP
     SDK --> MCP
     CLI --> SDK
+    HOOKS --> CLI
     UI_FE --> OAP --> UI_BE --> MCP
+
+    FC --> MCP
+    FC --> VK
+    TR --> MCP
+    TR --> VK
 
     SDK -. OAuth client_credentials .-> AUTH
     MCP -. JWKS .-> AUTH
@@ -56,6 +113,7 @@ graph TB
 
     SVC --> EMB
     SVC --> RR
+    MCP -. push notifications .-> VK
 ```
 
 Every memory operation flows through the MCP server. The server applies authorization in `core/authz.py` (JWT-first, session-fallback) before any tool call reaches the service layer. The service layer in `src/memoryhub_core/services/` is the single source of truth for memory CRUD, search, graph relationships, and curation; the MCP tools are thin wrappers that call into it.
@@ -115,7 +173,7 @@ sequenceDiagram
     MCP-->>Agent: results + pivot_suggested<br/>+ focus_fallback_reason
 ```
 
-> **Note:** The diagram uses legacy tool names (`write_memory`, `search_memory`) which remain as deprecated aliases. The compact profile (default) consolidates these into a single `memory` tool with an `action` parameter. See [agent-integration-guide.md](agent-integration-guide.md) for the current tool surface.
+> **Note:** The diagram uses legacy tool names (`write_memory`, `search_memory`) which remain as deprecated aliases. The compact profile (default) consolidates these into a single `memory` tool with an `action` parameter. See [agent-integration-guide.md](guides/agent-integration-guide.md) for the current tool surface.
 
 The session-focus path (#58) is the most architecturally interesting addition. It is **stateless** by design — the focus string is passed per call rather than stored on a session — which avoided every coordination question that a stateful focus would have raised. The cost is one re-embed of the focus string per call (~50ms with a warm vLLM), which is negligible relative to the cross-encoder rerank latency. When the user has not set a focus, the entire path short-circuits and the server falls through to the plain Layer 1 cosine retrieval — there is no rerank latency on the no-focus hot path.
 
@@ -123,7 +181,7 @@ The cross-encoder reranker (`ms-marco-MiniLM-L12-v2`) was deployed mid-session d
 
 ## The tree-based memory model
 
-Memories are organized as a tree, not a flat list or a layered stack. Each memory is a node that can have child branches — some required (like scope metadata), some optional (like rationale or provenance). This is explained in detail in [memory-tree.md](memory-tree.md), but here is the structural concept:
+Memories are organized as a tree, not a flat list or a layered stack. Each memory is a node that can have child branches — some required (like scope metadata), some optional (like rationale or provenance). This is explained in detail in [memory-tree.md](design/memory-tree.md), but here is the structural concept:
 
 ```mermaid
 graph TD
@@ -157,7 +215,7 @@ Authentication and authorization are handled by two cooperating layers.
 
 - `client_credentials` for agents and SDK consumers — the standard machine-to-machine flow.
 - `authorization_code + PKCE` for browser-based human users (currently used by the dashboard via the OpenShift OAuth proxy).
-- `token_exchange` (RFC 8693) for platform-integrated agents (kagenti, RHOAI) — designed but not yet wired.
+- `token_exchange` (RFC 8693) for platform-integrated agents (RHOAI) — designed but not yet wired.
 
 JWTs are RSA-2048-signed, short-lived (5-15 min), and refreshed via DB-backed refresh tokens. The auth server publishes a JWKS endpoint that the MCP server's `JWTVerifier` polls. Token claims include `sub`, `client_id`, operational scopes (`memory:read`, `memory:write`, `memory:admin`), access-tier scopes (`user`, `project`, `campaign`, `role`, `organizational`, `enterprise`), and a `tenant_id` for future multi-tenant isolation (#46).
 
@@ -180,6 +238,12 @@ graph TB
         subgraph "memory-hub-mcp namespace"
             MCP_POD[memory-hub-mcp pod<br/>FastMCP 3]
             UI_POD[memoryhub-ui pod<br/>BFF + oauth-proxy sidecar]
+            VK_POD[memoryhub-valkey pod<br/>Valkey 8.0]
+            FC_JOB[fact-checker CronJob<br/>daily 01:00 UTC]
+        end
+
+        subgraph "memoryhub-agents namespace"
+            TR_POD[trace-reviewer pod<br/>Deployment]
         end
 
         subgraph "memoryhub-auth namespace"
@@ -205,14 +269,20 @@ graph TB
     MCP_POD --> EMB
     MCP_POD --> RR
     MCP_POD -. JWKS .-> AUTH_POD
+    MCP_POD -. push .-> VK_POD
     UI_POD --> MCP_POD
     UI_POD -. admin API .-> AUTH_POD
     AUTH_POD --> PG_POD
 
+    FC_JOB --> MCP_POD
+    FC_JOB --> VK_POD
+    TR_POD --> MCP_POD
+    TR_POD -. cross-namespace .-> VK_POD
+
     PROM -. future .-> MCP_POD & UI_POD & AUTH_POD
 ```
 
-The MCP server pod and the dashboard pod share the `memory-hub-mcp` namespace so the BFF can reach the MCP server over the cluster network without crossing namespace boundaries. The auth server lives in its own namespace because it has a different release cadence and a smaller blast radius for security incidents. PostgreSQL lives in its own namespace because the OOTB PostgreSQL operator that ships with OpenShift expects it there and because future replica scaling does not need to touch the application namespaces.
+The MCP server pod, dashboard, Valkey, and the Fact Checker CronJob share the `memory-hub-mcp` namespace so they can communicate over the cluster network without crossing namespace boundaries. The Trace Reviewer runs in a separate `memoryhub-agents` namespace because it has a different scaling profile (HPA-eligible, continuous) and accesses Valkey cross-namespace via DNS (`memoryhub-valkey.memory-hub-mcp.svc:6379`). The auth server lives in its own namespace because it has a different release cadence and a smaller blast radius for security incidents. PostgreSQL lives in its own namespace because the OOTB PostgreSQL operator that ships with OpenShift expects it there and because future replica scaling does not need to touch the application namespaces.
 
 All containers use Red Hat UBI9 base images. FIPS compliance is inherited from the cluster's FIPS mode — PostgreSQL delegates crypto to OS-level OpenSSL, the auth server's RSA signing uses the OS crypto provider, and end-to-end FIPS validation is on the roadmap but not yet completed.
 
@@ -226,7 +296,19 @@ External cluster routes:
 
 ## What's decided and what's open
 
-**Decided and shipped.** Tree-based memory model. PostgreSQL + pgvector for relational + vector + graph in one database. MCP as the primary agent interface. OAuth 2.1 with `client_credentials` and short-lived JWTs. Service-layer RBAC enforced via `core/authz.py`. Stateless session focus with cross-encoder reranking and graceful cosine fallback. `.memoryhub.yaml` schema with Pydantic v2 in the SDK. CLI with `memoryhub config init` for project-level setup, feature parity with MCP tool surface (#199), structured `--output json` for agent consumption (#200), and `--version` flag (#165). Single-namespace co-location of MCP + UI; separate namespaces for auth and database. Dashboard with six panels behind oauth-proxy. Three-namespace deployment topology. Server-side library renamed to `memoryhub-core` (distribution name) / `memoryhub_core` (import name) so it no longer collides with the published SDK (#55 closed). SDK v0.6.0 on PyPI with stub result parsing fix (#205). Campaign & domain framework MVP — campaign as a new scope between project and organizational with enrollment-based RBAC, crosscutting domain tags on memories with RRF-integrated retrieval boosting (#154). Project auto-enrollment (#188) — `projects` table with `enrollment_policy` (open/invite_only), agents writing to open projects are auto-enrolled on first project-scoped write, `manage_project` tool for project discovery and lifecycle management. MCP tool compaction (#201/#202) — 10 tools consolidated to 2 (`register_session` + `memory` action-dispatch); old tools retained as deprecated aliases during migration. Session enhancements (#189/#190) — `register_session` returns project list with memory counts, quick-start hints, and `expires_at` for session TTL. `search_memory` project_id filtering (#194) — `project_id` parameter now correctly restricts results to the specified project. PostgreSQL backup and restore scripts (#191). Content type system (#237) — `content_type` column on memory_nodes with values experiential/knowledge/behavioral enables knowledge layer graduation workflow and behavioral memory for agent reconstruction; `reconstruct` action returns all behavioral memories for an owner. Entity extraction Phase 2 (#170) — spaCy NER pipeline extracts POLE+O entities at write time via background async task; feature-flagged by `MEMORYHUB_ENTITY_EXTRACTION_ENABLED`. Content-addressed entity IDs (#247) — SHA-256 content_hash column on entity nodes with partial unique index for deterministic dedup. Memory promotion (#235) — `promote` action copies memories from narrower to broader scope with derived_from provenance link. Workflow checkpoint (#238) — `checkpoint` action provides durable key-value state for recurring agents via branch_type="checkpoint" with in-place metadata updates and weight 0.3. SDK extraction pipeline (#240) — async pipeline in sdk/src/memoryhub/extraction/ observes agent traces and proposes/writes candidate memories via 4 built-in extractors (entity, preference, decision trace, relationship) with dedup filter and pluggable Extractor ABC. Obsidian export (#245) — SDK export_obsidian() + CLI `memoryhub export obsidian` exports memories as Obsidian-compatible markdown with YAML frontmatter, wikilinks, and scope/entity tags. PII curation escalation (#234) — pii_scan system rule changed from flag to block with migration 016 updating existing tenants. Conversation thread persistence (#168) — first-class governed threads with scope/tenant isolation, RBAC, and retention policies. `thread` tool with 9 actions (create, append, get, list, archive, extract, fork, share, delete). Asynchronous extraction pipeline reads conversation messages via cursor-based sliding window and produces memory nodes with provenance tracking through `conversation_extractions` records. Fork and cross-agent handoff with A2A-compatible `context_id` mapping and handoff redaction filtering (#193). Retention enforcement via 4-level deletion hierarchy (soft-delete, admin purge, spill response, silent spill) with cascade modes (delete/orphan/preserve), legal hold, and daily CronJob sweep. SDK v0.13.0 adds 9 async thread methods; CLI v0.10.0 adds `memoryhub thread` subcommands.
+**Decided and shipped.** (Grouped by theme; issue numbers link the details. The per-release record is [CHANGELOG.md](../CHANGELOG.md).)
+
+*Core model and storage.* Tree-based memory model. PostgreSQL + pgvector for relational + vector + graph in one database. Content type system (#237) — `content_type` column on memory_nodes with values experiential/knowledge/behavioral enables knowledge layer graduation workflow and behavioral memory for agent reconstruction; `reconstruct` action returns all behavioral memories for an owner. Entity extraction Phase 2 (#170) — spaCy NER pipeline extracts POLE+O entities at write time via background async task; feature-flagged by `MEMORYHUB_ENTITY_EXTRACTION_ENABLED`. Content-addressed entity IDs (#247) — SHA-256 content_hash column on entity nodes with partial unique index for deterministic dedup. Memory promotion (#235) — `promote` action copies memories from narrower to broader scope with derived_from provenance link. Workflow checkpoint (#238) — `checkpoint` action provides durable key-value state for recurring agents via branch_type="checkpoint" with in-place metadata updates and weight 0.3.
+
+*Retrieval.* Stateless session focus with cross-encoder reranking and graceful cosine fallback. Campaign & domain framework MVP — campaign as a new scope between project and organizational with enrollment-based RBAC, crosscutting domain tags on memories with RRF-integrated retrieval boosting (#154). `search_memory` project_id filtering (#194) — `project_id` parameter now correctly restricts results to the specified project.
+
+*Governance and auth.* OAuth 2.1 with `client_credentials` and short-lived JWTs. Service-layer RBAC enforced via `core/authz.py`. Project auto-enrollment (#188) — `projects` table with `enrollment_policy` (open/invite_only), agents writing to open projects are auto-enrolled on first project-scoped write, `manage_project` tool for project discovery and lifecycle management. PII curation escalation (#234) — pii_scan system rule changed from flag to block with migration 016 updating existing tenants.
+
+*Conversation persistence.* Conversation thread persistence (#168) — first-class governed threads with scope/tenant isolation, RBAC, and retention policies. `thread` tool with 9 actions (create, append, get, list, archive, extract, fork, share, delete). Asynchronous extraction pipeline reads conversation messages via cursor-based sliding window and produces memory nodes with provenance tracking through `conversation_extractions` records. Fork and cross-agent handoff with A2A-compatible `context_id` mapping and handoff redaction filtering (#193). Retention enforcement via 4-level deletion hierarchy (soft-delete, admin purge, spill response, silent spill) with cascade modes (delete/orphan/preserve), legal hold, and daily CronJob sweep.
+
+*Surfaces.* MCP as the primary agent interface; MCP tool compaction (#201/#202) — flat tools consolidated into action-dispatch (`memory`, `thread`); old tools retained as deprecated aliases during migration. Session enhancements (#189/#190) — `register_session` returns project list with memory counts, quick-start hints, and `expires_at` for session TTL. `.memoryhub.yaml` schema with Pydantic v2 in the SDK. CLI with `memoryhub config init` for project-level setup, feature parity with MCP tool surface (#199), structured `--output json` for agent consumption (#200), and `--version` flag (#165). Dashboard with six panels behind oauth-proxy. Server-side library renamed to `memoryhub-core` (distribution name) / `memoryhub_core` (import name) so it no longer collides with the published SDK (#55 closed). SDK v0.6.0 on PyPI with stub result parsing fix (#205); v0.13.0 adds 9 async thread methods; CLI v0.10.0 adds `memoryhub thread` subcommands. SDK extraction pipeline (#240) — async pipeline in sdk/src/memoryhub/extraction/ observes agent traces and proposes/writes candidate memories via 4 built-in extractors (entity, preference, decision trace, relationship) with dedup filter and pluggable Extractor ABC. Obsidian export (#245) — SDK export_obsidian() + CLI `memoryhub export obsidian` exports memories as Obsidian-compatible markdown with YAML frontmatter, wikilinks, and scope/entity tags.
+
+*Deployment.* Single-namespace co-location of MCP + UI; separate namespaces for auth and database. Multi-namespace deployment topology (see Deployment topology above). PostgreSQL backup and restore scripts (#191).
 
 **Decided and shipped (2026-06-30 session).** Actor_id/driver_id identity model (#66) with three-tier resolution (per-request > session default > actor_id). Structured audit logging stub (#67) with JSON events on all 8 tool call sites. Project-scope membership enforcement (#64) wired into claims pipeline and search filters. On-behalf-of authorization (#284) for service agents writing to user/project scope. Tenant-scoped admin API (#105). Temporal awareness: `relevant_until` column (#282) with heuristic temporal classifier and search-time `temporal_status` filter. Within-user pattern surfacing (#292) annotating search responses with `pattern_signals`. Admin content moderation (#45): status model (active/quarantined/soft_deleted), cross-owner admin search with regex, quarantine/restore, hard delete with sanitized audit mode. Shared curation agent framework (`memoryhub-agents` package, #286) with Valkey queue client, leader election, MCP client with retry. Fact Checker agent (#287) with calendar verification plugin. Trace Reviewer agent (#288) with heuristic memory extraction in degraded mode. Cross-encoder cost/benefit benchmark (#274).
 
@@ -240,10 +322,9 @@ The architecture is designed to let these open questions be resolved incremental
 
 - [`SYSTEMS.md`](SYSTEMS.md) — per-subsystem inventory with status, doc links, and dependency graph
 - [`agent-memory-ergonomics/`](agent-memory-ergonomics/) — the design cluster covering search response shape, session focus retrieval, and project configuration (Layers 1-3 shipped 2026-04-07)
-- [`mcp-server.md`](mcp-server.md) — current MCP tool surface and parameter reference
-- [`memory-tree.md`](memory-tree.md) — the tree memory model in detail
-- [`storage-layer.md`](storage-layer.md) — pgvector usage and schema
-- [`governance.md`](governance.md) — RBAC, JWT verification, audit (planned)
-- [`package-layout.md`](package-layout.md) — the #55 server/SDK naming collision and proposed rename
-- [`planning/kagenti-integration/`](../planning/kagenti-integration/) — Kagenti platform integration design
+- [`mcp-server.md`](design/mcp-server.md) — current MCP tool surface and parameter reference
+- [`memory-tree.md`](design/memory-tree.md) — the tree memory model in detail
+- [`storage-layer.md`](design/storage-layer.md) — pgvector usage and schema
+- [`governance.md`](design/governance.md) — RBAC, JWT verification, audit (planned)
+- [`package-layout.md`](../planning/archive/package-layout.md) — historical record of the #55 server/SDK naming collision and rename (shipped; see CONTRIBUTING.md for current layout)
 - [`planning/llamastack-integration/`](../planning/llamastack-integration/) — LlamaStack platform integration design
