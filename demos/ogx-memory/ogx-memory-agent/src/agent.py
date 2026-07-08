@@ -137,7 +137,7 @@ async def list_memories(limit: int = 20):
     try:
         async with MemoryHubClient(server_url=mh_url, api_key=_api_key) as client:
             result = await client.search(
-                query="",
+                query="preferences decisions context",
                 max_results=limit,
                 mode="index",
             )
