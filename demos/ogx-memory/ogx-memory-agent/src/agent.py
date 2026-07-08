@@ -139,7 +139,7 @@ async def list_memories(limit: int = 20):
             result = await client.search(
                 query="preferences decisions context",
                 max_results=limit,
-                mode="index",
+                mode="full",
             )
         memories = []
         for m in result.results:
