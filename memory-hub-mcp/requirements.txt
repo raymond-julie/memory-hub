@@ -14,5 +14,6 @@ pydantic-settings
 minio
 psycopg2-binary
 httpx
-spacy>=3.7
-gliner>=0.2.7
+# spacy and gliner moved to [extraction] extra in memoryhub_core.
+# Not needed for core MCP functionality. Reinstall when entity
+# extraction is enabled and cluster has build capacity.
