@@ -3,6 +3,16 @@
 ## Project Overview
 MemoryHub is a Kubernetes-native agent memory component for OpenShift AI. See docs/ARCHITECTURE.md for the full architecture and docs/SYSTEMS.md for subsystem inventory.
 
+## Branch Protection
+
+Main is protected. Never push directly to main. All changes go through pull requests:
+- Create a feature branch (`git checkout -b feat/description`)
+- Commit to the branch
+- Push the branch and open a PR via `gh pr create`
+- Merge after review
+
+This applies to all changes including docs, config, and demo code. No exceptions.
+
 ## Issue Management
 Use the `/issue-tracker` skill for ALL issue operations. Never create issues manually without using the skill -- it enforces our conventions:
 - Every issue references a design document
