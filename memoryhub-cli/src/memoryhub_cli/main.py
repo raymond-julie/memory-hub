@@ -47,9 +47,11 @@ from memoryhub_cli.output import (
 from memoryhub_cli.project_config import (
     FocusSource,
     InitChoices,
+    InstructionFormat,
     LoadingPattern,
     SessionShape,
     build_project_config,
+    render_instructions,
     rewrite_rule_file,
     suggest_pattern,
     write_init_files,
@@ -1006,6 +1008,11 @@ def config_init(
     output: OutputFormat = typer.Option(
         OutputFormat.table, "--output", "-o", help="Output format: table, json, quiet",
     ),
+    instruction_format: str = typer.Option(
+        "claude-code",
+        "--format",
+        help="Instruction format: claude-code, system-prompt, agents-md, ogx, raw",
+    ),
 ):
     """Walk through project setup and write `.memoryhub.yaml` + the
     generated `.claude/rules/memoryhub-loading.md` rule file."""
@@ -1072,34 +1079,58 @@ def config_init(
     )
     config = build_project_config(choices)
 
+    # Validate instruction_format early.
+    valid_formats = ("claude-code", "system-prompt", "agents-md", "ogx", "raw")
+    if instruction_format not in valid_formats:
+        handle_error(
+            "invalid_format",
+            f"Unknown format {instruction_format!r}. Choose from: {', '.join(valid_formats)}",
+            output,
+            EXIT_CLIENT_ERROR,
+        )
+
     try:
-        result = write_init_files(config, project_dir, overwrite=force)
+        result = write_init_files(
+            config,
+            project_dir,
+            overwrite=force,
+            instruction_format=instruction_format,  # type: ignore[arg-type]
+        )
     except FileExistsError as exc:
         handle_error("file_exists", str(exc), output, EXIT_CLIENT_ERROR)
 
     if output == OutputFormat.json:
         json_success({
             "yaml_path": str(result.yaml_path),
-            "rule_path": str(result.rule_path),
+            "rule_path": str(result.rule_path) if result.rule_path else None,
             "hook_path": str(result.hook_path) if result.hook_path else None,
             "settings_path": str(result.settings_path) if result.settings_path else None,
             "legacy_backup": str(result.legacy_backup) if result.legacy_backup else None,
+            "instruction_format": instruction_format,
         })
         return
     if output == OutputFormat.quiet:
         return
 
-    console.print(f"\n[green]Wrote {result.yaml_path}[/green]")  # noqa: T201
-    console.print(f"[green]Wrote {result.rule_path}[/green]")  # noqa: T201
-    if result.hook_path:
-        console.print(f"[green]Wrote {result.hook_path}[/green]")  # noqa: T201
-    if result.settings_path:
-        console.print(f"[green]Updated {result.settings_path}[/green]")  # noqa: T201
-    if result.legacy_backup is not None:
+    # For non-claude-code formats, print instructions to stdout.
+    if instruction_format != "claude-code":
+        console.print(f"\n[green]Wrote {result.yaml_path}[/green]")  # noqa: T201
         console.print(  # noqa: T201
-            f"[yellow]Backed up legacy rule to {result.legacy_backup}.[/yellow]\n"
-            f"Review and delete the .bak when you're satisfied with the new rule."
+            f"\n[bold]Instructions ({instruction_format}):[/bold]\n"
         )
+        print(render_instructions(config, instruction_format))  # noqa: T201
+    else:
+        console.print(f"\n[green]Wrote {result.yaml_path}[/green]")  # noqa: T201
+        console.print(f"[green]Wrote {result.rule_path}[/green]")  # noqa: T201
+        if result.hook_path:
+            console.print(f"[green]Wrote {result.hook_path}[/green]")  # noqa: T201
+        if result.settings_path:
+            console.print(f"[green]Updated {result.settings_path}[/green]")  # noqa: T201
+        if result.legacy_backup is not None:
+            console.print(  # noqa: T201
+                f"[yellow]Backed up legacy rule to {result.legacy_backup}.[/yellow]\n"
+                f"Review and delete the .bak when you're satisfied with the new rule."
+            )
 
     # ── Summary ──
     mode_label = {"focused": "focused", "broad": "broad", "adaptive": "focused"}[shape]

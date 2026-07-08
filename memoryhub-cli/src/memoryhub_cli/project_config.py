@@ -14,7 +14,7 @@ import json
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import yaml
 from memoryhub import (
@@ -30,6 +30,7 @@ from memoryhub import (
 SessionShape = Literal["focused", "broad", "adaptive"]
 LoadingPattern = Literal["eager", "lazy", "lazy_with_rebias", "jit"]
 FocusSource = Literal["declared", "directory", "first_turn", "auto"]
+InstructionFormat = Literal["claude-code", "system-prompt", "agents-md", "ogx", "raw"]
 
 
 @dataclass(frozen=True)
@@ -253,6 +254,97 @@ implicit context. Use it for narrow one-shot tooling sessions.
 }
 
 
+_UNIVERSAL_PATTERN_BLOCKS: dict[LoadingPattern, str] = {
+    "eager": """\
+## At session start
+
+If your agent framework pre-loads memory context at startup, use it as
+your working set. Otherwise, follow the manual flow below.
+
+1. Authenticate with `register_session(api_key=<your_key>)`.
+2. Immediately call `search_memory(query="", mode="index", max_results=50)`
+   to load the full working set as lightweight stubs. The empty query plus
+   `mode="index"` returns headers for everything visible to your user.
+3. Hold the returned working set in context for the entire session.
+
+## During the session
+
+- When a stub looks load-bearing for the current task, call `read_memory`
+  to expand it into full content.
+- New writes (your own or another agent's) are NOT pushed automatically.
+  If a decision depends on the latest state, call `search_memory` again
+  rather than trusting the working set you loaded at session start.
+""",
+    "lazy": """\
+## At session start
+
+If your agent framework pre-loads memory context at startup, use it as
+your working set. Otherwise, follow the manual flow below.
+
+Authenticate with `register_session(api_key=<your_key>)`, then after the
+first user turn derive a 1-2 sentence summary and call
+`search_memory(query=<summary>)`.
+
+## During the session
+
+- Trust your working set. Re-search only when the user explicitly
+  references a concept you don't have loaded.
+- If the opening turn was vague ("can you take a look at this?"), your
+  working set may miss relevant memories. Watch for it and re-search with
+  a more specific query as soon as the topic firms up.
+""",
+    "lazy_with_rebias": """\
+## At session start
+
+If your agent framework pre-loads memory context at startup, use it as
+your working set. Otherwise, follow the manual flow below.
+
+Authenticate with `register_session(api_key=<your_key>)`, then after the
+first user turn derive a 1-2 sentence summary and call
+`search_memory(query=<summary>)`.
+
+## During the session -- watch for pivots
+
+A pivot is any of:
+
+1. **Subsystem change** -- the user changes topic to a different area of
+   the project (e.g., from "deployment" to "UI", or from "MCP server" to
+   "SDK").
+2. **Unknown concept** -- the user references a project-specific term that
+   isn't in your working set.
+3. **Explicit switch** -- the user says "let's switch to...", "now let's
+   talk about...", or similar phrasing.
+
+When you detect a pivot, call `search_memory` with a query for the new
+topic. **ADD the results to your working set; do not replace it.** The
+prior topic may come back later in the same session, and the agent should
+not have to re-search for memories it already saw.
+""",
+    "jit": """\
+## At session start
+
+If your agent framework pre-loads memory context at startup, use it as
+initial context. Otherwise, follow the manual flow below.
+
+Authenticate with `register_session(api_key=<your_key>)`. Do NOT call
+`search_memory` -- there is no working set in this pattern.
+
+## During the session
+
+- Call `search_memory` only when you encounter a question whose answer
+  might be in memory. Each search is one-shot.
+- Triggers that warrant a search: the user asks "what did we decide
+  about X?", references a project-specific term you don't recognize, or
+  asks for a recommendation that should reflect prior decisions.
+- After acting on a search result, let it drop from context once the
+  immediate question is answered. Do not accumulate a working set.
+
+This pattern minimizes startup token cost at the price of missing
+implicit context. Use it for narrow one-shot tooling sessions.
+""",
+}
+
+
 _HYGIENE_BLOCK = """\
 ## Memory hygiene
 
@@ -343,6 +435,94 @@ def render_rule_file(config: ProjectConfig) -> str:
     return "\n".join(blocks)
 
 
+_UNIVERSAL_HEADER = """\
+# MemoryHub Agent Instructions: {pattern_title}
+
+This project uses MemoryHub for persistent, centralized agent memory across
+conversations. You MUST use it.
+"""
+
+_SYSTEM_PROMPT_NOTE = """\
+> Paste this into your agent's system prompt.
+"""
+
+_AGENTS_MD_HEADER = """\
+## MemoryHub
+
+This project uses MemoryHub for persistent, centralized agent memory.
+"""
+
+_OGX_SNIPPET = """\
+## OGX Integration
+
+Add the following to your OGX `run.yaml` under `tool_groups`:
+
+```yaml
+# Add to your OGX run.yaml under tool_groups:
+#   - provider_id: memoryhub
+#     provider_type: remote::model-context-protocol
+#     config:
+#       url: "${MEMORYHUB_MCP_URL}"
+```
+"""
+
+
+def _render_universal_body(config: ProjectConfig) -> str:
+    """Render the pattern + hygiene + contradiction + campaigns blocks
+    using universal (framework-agnostic) pattern text."""
+    pattern = config.memory_loading.pattern
+    pattern_block = _UNIVERSAL_PATTERN_BLOCKS[pattern]
+    contradiction_block = (
+        _CONTRADICTION_ENABLED
+        if config.memory_loading.cross_domain_contradiction_detection
+        else _CONTRADICTION_DISABLED
+    )
+    blocks = [pattern_block, _HYGIENE_BLOCK, contradiction_block]
+
+    campaigns = config.memory_loading.campaigns
+    if campaigns:
+        campaign_list = "\n".join(f"- {c}" for c in campaigns)
+        blocks.append(_CAMPAIGN_BLOCK.format(campaign_list=campaign_list))
+
+    return "\n".join(blocks)
+
+
+def render_instructions(
+    config: ProjectConfig,
+    fmt: InstructionFormat = "claude-code",
+) -> str:
+    """Render MemoryHub agent instructions in the requested format.
+
+    For ``"claude-code"`` this is identical to :func:`render_rule_file`.
+    Other formats use framework-agnostic pattern text suitable for
+    pasting into system prompts, AGENTS.md files, or OGX configurations.
+    """
+    if fmt == "claude-code":
+        return render_rule_file(config)
+
+    pattern = config.memory_loading.pattern
+    title = _PATTERN_TITLES[pattern]
+    body = _render_universal_body(config)
+
+    if fmt == "raw":
+        header = _UNIVERSAL_HEADER.format(pattern_title=title)
+        return header + "\n" + body
+
+    if fmt == "system-prompt":
+        header = _UNIVERSAL_HEADER.format(pattern_title=title)
+        return header + "\n" + _SYSTEM_PROMPT_NOTE + "\n" + body
+
+    if fmt == "agents-md":
+        return _AGENTS_MD_HEADER + "\n" + body
+
+    if fmt == "ogx":
+        header = _UNIVERSAL_HEADER.format(pattern_title=title)
+        return header + "\n" + body + "\n" + _OGX_SNIPPET
+
+    # Should not be reachable with proper typing, but be safe.
+    raise ValueError(f"Unknown instruction format: {fmt!r}")
+
+
 # ── Filesystem helpers ───────────────────────────────────────────────────────
 
 
@@ -351,7 +531,7 @@ class WriteResult:
     """Outcome of writing the project config + rule file to disk."""
 
     yaml_path: Path
-    rule_path: Path
+    rule_path: Optional[Path]
     legacy_backup: Path | None  # set when an old memoryhub-integration.md was moved
     hook_path: Path | None = None
     settings_path: Path | None = None
@@ -386,6 +566,7 @@ def write_init_files(
     *,
     overwrite: bool = False,
     generate_hooks: bool = True,
+    instruction_format: InstructionFormat = "claude-code",
 ) -> WriteResult:
     """Write `.memoryhub.yaml`, the generated rule file, and optionally hooks.
 
@@ -393,9 +574,16 @@ def write_init_files(
     :func:`rewrite_rule_file` instead so it does not clobber the
     user-edited YAML.
 
-    When ``generate_hooks`` is True (default), also writes the
-    SessionStart hook script to `.claude/hooks/` and merges hook
-    entries into `.claude/settings.json`.
+    When ``instruction_format`` is ``"claude-code"`` (the default), this
+    writes the rule file to ``.claude/rules/`` and generates hooks.
+    For other formats, only ``.memoryhub.yaml`` is written; the rendered
+    instructions are returned via :func:`render_instructions` for the
+    caller to print.
+
+    When ``generate_hooks`` is True (default) and format is
+    ``"claude-code"``, also writes the SessionStart hook script to
+    ``.claude/hooks/`` and merges hook entries into
+    ``.claude/settings.json``.
 
     Raises:
         FileExistsError: If either generated file already exists and
@@ -404,6 +592,20 @@ def write_init_files(
     """
     project_dir = Path(project_dir)
     yaml_path = project_dir / CONFIG_FILENAME
+
+    # Non-claude-code formats: write only the YAML, skip rule file and hooks.
+    if instruction_format != "claude-code":
+        if not overwrite and yaml_path.exists():
+            raise FileExistsError(
+                f"{yaml_path} already exists. Re-run with --force to overwrite."
+            )
+        yaml_path.write_text(render_yaml(config))
+        return WriteResult(
+            yaml_path=yaml_path,
+            rule_path=None,
+            legacy_backup=None,
+        )
+
     rules_dir = project_dir / ".claude" / "rules"
     rule_path = rules_dir / GENERATED_RULE_NAME
 
@@ -593,6 +795,7 @@ def write_hook_script(project_dir: Path) -> Path:
 
 __all__ = [
     "InitChoices",
+    "InstructionFormat",
     "SessionShape",
     "LoadingPattern",
     "FocusSource",
@@ -603,6 +806,7 @@ __all__ = [
     "LEGACY_RULE_NAME",
     "build_project_config",
     "merge_settings_hooks",
+    "render_instructions",
     "render_yaml",
     "render_rule_file",
     "rewrite_rule_file",

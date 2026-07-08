@@ -637,6 +637,95 @@ def test_config_init_generates_hooks_end_to_end(tmp_path: Path):
     assert "Wrote" in result.output
 
 
+# ── render_instructions ─────────────────────────────────────────────────
+
+
+def test_render_instructions_claude_code_matches_render_rule_file():
+    """claude-code format must be identical to render_rule_file()."""
+    from memoryhub_cli.project_config import render_instructions
+
+    cfg = build_project_config(_choices(pattern="lazy_with_rebias"))
+    assert render_instructions(cfg, "claude-code") == render_rule_file(cfg)
+
+
+def test_render_instructions_raw_no_claude_references():
+    from memoryhub_cli.project_config import render_instructions
+
+    cfg = build_project_config(_choices(pattern="lazy"))
+    out = render_instructions(cfg, "raw")
+    assert "memoryhub-context" not in out
+    assert "SessionStart hook" not in out
+    assert ".claude/rules/" not in out
+    assert "~/.config/memoryhub/api-key" not in out
+    # Should still have core content.
+    assert "## At session start" in out
+    assert "## Memory hygiene" in out
+    assert "register_session" in out
+
+
+def test_render_instructions_system_prompt_has_header():
+    from memoryhub_cli.project_config import render_instructions
+
+    cfg = build_project_config(_choices(pattern="eager"))
+    out = render_instructions(cfg, "system-prompt")
+    assert "# MemoryHub Agent Instructions" in out
+    assert "Paste this into your agent's system prompt" in out
+    assert "memoryhub-context" not in out
+
+
+def test_render_instructions_agents_md_has_section_header():
+    from memoryhub_cli.project_config import render_instructions
+
+    cfg = build_project_config(_choices(pattern="lazy_with_rebias"))
+    out = render_instructions(cfg, "agents-md")
+    assert "## MemoryHub" in out
+    assert "Subsystem change" in out
+    assert "memoryhub-context" not in out
+
+
+def test_render_instructions_ogx_includes_run_yaml_snippet():
+    from memoryhub_cli.project_config import render_instructions
+
+    cfg = build_project_config(_choices(pattern="jit"))
+    out = render_instructions(cfg, "ogx")
+    assert "run.yaml" in out
+    assert "provider_id: memoryhub" in out
+    assert "MEMORYHUB_MCP_URL" in out
+    assert "no working set" in out.lower()
+
+
+def test_render_instructions_raw_includes_campaigns():
+    from memoryhub_cli.project_config import render_instructions
+
+    cfg = build_project_config(_choices(campaigns=["spring-boot"]))
+    out = render_instructions(cfg, "raw")
+    assert "## Campaign enrollment" in out
+    assert "- spring-boot" in out
+
+
+def test_write_init_files_non_claude_format_skips_rule_and_hooks(tmp_path: Path):
+    cfg = build_project_config(_choices())
+    result = write_init_files(cfg, tmp_path, instruction_format="raw")
+
+    assert result.yaml_path.is_file()
+    assert result.rule_path is None
+    assert result.hook_path is None
+    assert result.settings_path is None
+    assert not (tmp_path / ".claude" / "rules").exists()
+
+
+def test_config_init_format_flag_recognized():
+    """--format is recognized by the config init command."""
+    from typer.testing import CliRunner
+
+    from memoryhub_cli.main import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["config", "init", "--help"])
+    assert result.exit_code == 0
+    assert "--format" in result.stdout
+
+
 def test_rule_file_presents_hook_as_expected_path():
     """Loading rule should frame hooks as the expected path, not just an option."""
     for pattern in ("eager", "lazy", "lazy_with_rebias", "jit"):
