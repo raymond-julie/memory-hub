@@ -1884,7 +1884,7 @@ init();
 
   function startMemoryPolling() {
     pollMemories();
-    memoryPollTimer = setInterval(pollMemories, 5000);
+    memoryPollTimer = setInterval(pollMemories, 15000);
   }
 
   function stopMemoryPolling() {
