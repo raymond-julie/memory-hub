@@ -1,6 +1,6 @@
 # Content Moderation
 
-> Status: Draft -- expanding from skeleton
+> Status: Design complete -- open questions resolved 2026-06-30
 
 ## Problem
 
@@ -200,18 +200,20 @@ The content hash serves a specific purpose: after a spill cleanup, an automated 
 - **Memory `status` column**: Not yet defined in [storage-layer.md](../storage-layer.md). The `status` enum described above (`active`, `quarantined`, `soft_deleted`) requires a schema migration that adds a `status` column to `memory_nodes` and updates all read queries to filter by `status = 'active'` for non-admin callers. This is in-scope for the same milestone as `quarantine_memory`.
 - **`Identity` type**: A shared type passed into every core operation, capturing actor id, actor type (`user`, `service`, `worker`), tenant, and scopes. Defined as part of the core library scaffold.
 
-## Open Questions
+## Decisions (resolved 2026-06-30)
 
-- **Should `search_memory_admin` results have a TTL?** If the calling session holds search results in memory, those results are sensitive during a spill response. Should the server enforce an expiration, or is session-scoped lifetime sufficient? The current design relies on the session ending, but a long-running admin session could hold sensitive results indefinitely. This concern applies equally to MCP and BFF callers.
+These were open questions during the design phase. Resolved during backlog refinement.
 
-- **How do we verify completeness of a spill cleanup?** After deleting all matches, how does the admin confirm nothing was missed? Re-running the search should return zero results, but timing matters -- if new memories are being written concurrently, a race condition could introduce new instances. Should `bulk_delete_memories` temporarily block writes matching the search pattern?
+1. **Admin search result TTL.** Session-scoped lifetime is sufficient. No server-side expiration or TTL enforcement. If a long-running admin session becomes a concern, address it operationally (session timeouts) rather than adding application complexity.
 
-- **Should there be a "spill response" meta-operation?** A single core function that orchestrates the full search, review, confirm, delete flow would reduce the chance of operator error during a high-stress incident. The tradeoff is complexity -- a meta-operation is harder to test and harder to reason about than composing individual operations. If added, it lives in the core like everything else and is exposed via every transport.
+2. **Spill cleanup completeness verification.** Re-run the search after deletion; zero results means complete. No write-blocking for v1. The concurrent-write race is real but low-probability during an active spill response, and adding write-blocking introduces its own complexity and blast radius. Accept the race; document the "re-run search" verification step in the operator runbook.
 
-- **Integration with external incident management systems**: Should deletion audit entries be forwarded to an external system (ServiceNow, PagerDuty, etc.) as part of the operation, or is that a downstream consumer of the audit log?
+3. **"Spill response" meta-operation.** No. Compose individual operations (`search_memory_admin` -> review -> `bulk_delete_memories`). A meta-operation adds complexity and is harder to test. Revisit if operator error during spill response becomes a pattern.
 
-- **Embedding inversion risk quantification**: The requirement to delete embeddings is based on published research on inversion attacks. How realistic is this threat for our embedding model (all-MiniLM-L6-v2) and memory content lengths? This affects whether embedding deletion is a hard requirement or a defense-in-depth measure.
+4. **External incident management integration.** Out of scope. Audit log entries are the integration surface. Downstream consumers (ServiceNow, PagerDuty) consume the audit log; the admin operations do not push to external systems.
 
-- **Indexing for content_hash reintroduction detection**: The hash-based reintroduction check requires querying `request_context->>'content_hash'` across the audit log. The indexes defined in [governance.md](../governance.md) do not cover this access pattern. Options: a dedicated `content_hash` column on `audit_log`, a GIN index on `request_context`, or a separate `deletion_hashes` table populated as a side effect of sanitized deletions. The separate-table approach is probably cleanest because it isolates the access pattern from the audit log's append-only role.
+5. **Embedding inversion risk.** Defense in depth. Delete embeddings with the row (they're stored on the row, so this is automatic). No special treatment beyond ensuring the row is physically removed. The threat is real in research but low-probability for short content with our embedding model.
 
-- **Atomic audit-before-delete with the audit_writer role**: governance.md restricts audit log inserts to a dedicated `audit_writer` role with INSERT-only privileges. `hard_delete_memory` requires both an audit insert and a memory delete in the same transaction. This needs either (a) the application to switch roles mid-transaction via `SET LOCAL ROLE`, (b) a single role with both INSERT-on-audit and DELETE-on-memory permissions (weakening the audit_writer isolation), or (c) a stored procedure that runs as `SECURITY DEFINER` and encapsulates the audit-then-delete sequence. Option (c) is probably the right answer but needs validation.
+6. **content_hash reintroduction detection indexing.** Separate `deletion_hashes` table, populated as a side effect of sanitized deletions. This isolates the access pattern from the audit log's append-only role and avoids GIN index overhead on `request_context`.
+
+7. **Atomic audit-before-delete role isolation.** Stored procedure running as `SECURITY DEFINER` (option c). The procedure encapsulates the audit-insert-then-memory-delete sequence, runs with the privileges of the definer role (which has both INSERT on audit_log and DELETE on memory_nodes), and is callable by the application role. This preserves the audit_writer isolation for all non-admin paths while allowing the admin path to do both operations atomically.
