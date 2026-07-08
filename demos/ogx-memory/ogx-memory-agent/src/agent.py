@@ -89,13 +89,10 @@ class OGXMemoryAgent(BaseAgent):
         response = await self.run_tool_calls(response)
         return StepResult.done(result=response.content)
 
-    async def shutdown(self) -> None:
-        # Extract and write memory from the user's last message
-        user_msgs = [m for m in self.messages if m.get("role") == "user"]
-        if user_msgs:
-            last = user_msgs[-1].get("content", "")
-            asyncio.create_task(extract_and_write(last))
-        await super().shutdown()
+    async def step(self) -> StepResult:
+        response = await self.call_model()
+        response = await self.run_tool_calls(response)
+        return StepResult.done(result=response.content)
 
 
 if __name__ == "__main__":
@@ -134,5 +131,17 @@ if __name__ == "__main__":
         except Exception as e:
             log.warning("Failed to list memories: %s", e)
             return {"memories": [], "error": str(e)}
+
+    from pydantic import BaseModel
+
+    class RememberRequest(BaseModel):
+        text: str
+
+    @server.app.post("/v1/remember")
+    async def remember(req: RememberRequest):
+        """Extract and write a memory from user text. Called by the UI
+        after each chat message."""
+        asyncio.create_task(extract_and_write(req.text))
+        return {"status": "accepted"}
 
     server.run(host=config.server.host, port=config.server.port)

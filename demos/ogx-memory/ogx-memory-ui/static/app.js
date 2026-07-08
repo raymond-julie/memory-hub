@@ -1623,6 +1623,13 @@ async function sendMessage() {
   appendMessage("user", text);
   messages.push({ role: "user", content: text });
 
+  // Fire-and-forget: tell the agent to extract and remember any facts
+  fetch("/v1/remember", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  }).catch(() => {});
+
   // Build the assistant message container and a renderer that owns it.
   const assistantEl = document.createElement("div");
   assistantEl.classList.add("message", "assistant");
