@@ -12,15 +12,19 @@ This workaround will be contributed upstream.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
 
 from fipsagents.baseagent import BaseAgent, StepResult, load_config
+from memoryhub import MemoryHubClient
 
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+
+log = logging.getLogger(__name__)
 
 
 class ChatMessage(BaseModel):
@@ -46,16 +50,21 @@ app = FastAPI(title="ogx-memory-agent")
 _config = None
 _system_prompt: str = ""
 _api_key: str = ""
+_mh_client: MemoryHubClient | None = None
 
 
 @app.on_event("startup")
 async def startup():
-    global _config, _system_prompt, _api_key
+    global _config, _system_prompt, _api_key, _mh_client
     _config = load_config("agent.yaml")
     agent = OGXMemoryAgent(config=_config)
     await agent.setup()
     _system_prompt = agent.build_system_prompt()
     _api_key = os.environ.get("MEMORYHUB_API_KEY", "")
+    mh_url = os.environ.get("MEMORYHUB_URL", "")
+    if _api_key and mh_url:
+        _mh_client = MemoryHubClient(server_url=mh_url, api_key=_api_key)
+        log.info("MemoryHub client initialized for /v1/memories endpoint")
 
 
 @app.get("/healthz")
@@ -118,6 +127,28 @@ async def chat_completions(request: ChatRequest):
             "total_tokens": getattr(response.usage, "total_tokens", 0) or 0,
         },
     }
+
+
+@app.get("/v1/memories")
+async def list_memories(limit: int = 20):
+    if not _mh_client:
+        return {"memories": [], "error": "MemoryHub client not configured"}
+    try:
+        result = _mh_client.list(max_results=limit, current_only=True)
+        memories = []
+        for m in result.get("memories", []):
+            memories.append({
+                "id": m.get("id", ""),
+                "content": m.get("content", m.get("stub", "")),
+                "scope": m.get("scope", ""),
+                "weight": m.get("weight", 0),
+                "created_at": m.get("created_at", ""),
+                "content_type": m.get("content_type", ""),
+            })
+        return {"memories": memories, "total": result.get("total", len(memories))}
+    except Exception as e:
+        log.warning("Failed to list memories: %s", e)
+        return {"memories": [], "error": str(e)}
 
 
 if __name__ == "__main__":
