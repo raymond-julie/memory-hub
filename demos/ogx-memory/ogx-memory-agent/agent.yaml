@@ -46,8 +46,8 @@ agent:
 #                      endpoints; set to any non-empty string (e.g. "not-required")
 model:
   provider: ${MODEL_PROVIDER:-openai}
-  endpoint: ${MODEL_ENDPOINT:-http://ogx-ogx.apps.cluster-n7pd5.n7pd5.sandbox5167.opentlc.com/v1}
-  name: ${MODEL_NAME:-vllm/RedHatAI/gpt-oss-20b}
+  endpoint: ${MODEL_ENDPOINT:-http://gpt-oss-20b.gpt-oss-model.svc.cluster.local:8000/v1}
+  name: ${MODEL_NAME:-RedHatAI/gpt-oss-20b}
   temperature: 0.7
   max_tokens: 4096
 
