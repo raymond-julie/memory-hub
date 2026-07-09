@@ -1,12 +1,12 @@
 # Research: Two-Vector Retrieval Ranking Math
 
-**Status:** Resolved 2026-04-07 (benchmark complete). NEW-1 (RRF blend over cross-encoder rerank) wins. Benchmark results and decision are documented in [§Recommendation (final)](#recommendation-final) below; the original three-option analysis remains for historical reference.
+**Status:** Resolved 2026-04-07 (benchmark complete). NEW-1 (RRF blend over cross-encoder rerank) wins. **Shipped-behavior note:** this research assumed a focus vector stored at `register_session` time; the shipped design is **stateless** — `focus` is passed per `search_memory` call and embedded per call (~50ms warm). The ranking math is identical either way; only where the focus string lives changed. See docs/design/two-vector-retrieval.md. Benchmark results and decision are documented in [§Recommendation (final)](#recommendation-final) below; the original three-option analysis remains for historical reference.
 
 **Feeds into:** [`../../docs/agent-memory-ergonomics/design.md`](../../docs/agent-memory-ergonomics/design.md) §Session Focus and Retrieval Biasing, issue #58, open question Q1 (resolved).
 
 ## Question
 
-Given a query vector `q` (from the current `search_memory` call) and a session focus vector `f` (embedded once at `register_session` time from a declared or inferred focus string), how should `search_memory` combine them into a single ranking?
+Given a query vector `q` (from the current `search_memory` call) and a session focus vector `f` (in this research, assumed embedded once at `register_session` time; as shipped, embedded from the per-call `focus` argument), how should `search_memory` combine them into a single ranking?
 
 The constraint: out-of-focus memories should be **down-weighted, not excluded**. A focused "deployment" session should still surface a UI memory if the user asks a pointed UI question — the session bias should lose to a strong direct query match. But a vague query during a focused session should drift toward memories in the session's focus area rather than the global top-K.
 

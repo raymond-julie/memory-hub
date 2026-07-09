@@ -1,12 +1,12 @@
 # Research: Pivot Detection for Pattern C
 
-**Status:** Options identified 2026-04-07. No empirical data yet. Recommendation is a hybrid but needs validation against real agents.
+**Status:** Resolved in implementation. The recommended hybrid shipped: server-side `pivot_suggested` at cosine-distance threshold 0.55 landed with #58 (see docs/design/two-vector-retrieval.md §Pivot detection), and the agent-side rule ships via `memoryhub config init` (#60) in the generated `.claude/rules/memoryhub-loading.md`. One mechanism differs from this research: focus is stateless (a per-call `search_memory` argument), so the server computes distance against the focus passed with the call, not a stored session vector. The validation plan below (empirical threshold tuning, agent-agreement measurement) was never formally run — the 0.55 threshold remains the starting guess in production. Analysis preserved as written.
 
 **Feeds into:** [`../../docs/agent-memory-ergonomics/design.md`](../../docs/agent-memory-ergonomics/design.md) §Loading Patterns (Pattern C), issue #58 (adjacent), open question Q2.
 
 ## Question
 
-Pattern C in the design doc is "lazy load after the first user turn, then rebias the working set when the session pivots to a new topic." This pattern needs a concrete trigger for "a pivot just happened." The vague instruction "watch for pivots and search again" produces inconsistent agent behavior — we know this because the current `.claude/rules/memoryhub-integration.md` already has a version of it and the pivot detection is ad-hoc.
+Pattern C in the design doc is "lazy load after the first user turn, then rebias the working set when the session pivots to a new topic." This pattern needs a concrete trigger for "a pivot just happened." The vague instruction "watch for pivots and search again" produces inconsistent agent behavior — we know this because the pre-#60 hand-written rule (`memoryhub-integration.md`, now the generated `memoryhub-loading.md`) already had a version of it and the pivot detection is ad-hoc.
 
 What's the right way to detect a pivot, and where should the detection live?
 
@@ -91,7 +91,7 @@ still be relevant.
 
 **Cons:**
 - Inconsistent across agents — different LLMs (or different versions of the same LLM) will interpret the rule differently
-- Doesn't scale to non-LLM agents (though this might not matter — the primary consumer is Claude Code and kagenti LangGraph agents)
+- Doesn't scale to non-LLM agents (though this might not matter — the primary consumer is Claude Code and LangGraph agents)
 - No central observability — you can't measure "how often did pivots happen this week" from the server
 - Depends on the agent being disciplined about checking the rule after each turn
 
@@ -161,6 +161,6 @@ Only meaningful once both component validations pass. At that point, run the age
 - `../../docs/agent-memory-ergonomics/design.md` §Loading Patterns (Pattern C) — the design this research supports
 - `../../planning/agent-memory-ergonomics-open-questions.md` Q2 — the question this research tracks
 - `two-vector-retrieval.md` — the session focus vector this detection reuses
-- `../../.claude/rules/memoryhub-integration.md` — current hand-written loading rule with an ad-hoc version of pivot detection
+- `../../.claude/rules/memoryhub-loading.md` (generated; formerly hand-written `memoryhub-integration.md`) — the loading rule containing pivot detection
 - Issue #58 — implementation tracking (the rule template, not the session vector itself)
 - Issue #60 — where the rule file generation lives
