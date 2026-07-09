@@ -18,7 +18,7 @@ Examples of knowledge:
 - "Wes prefers Podman over Docker" (user knowledge)
 
 What knowledge is NOT in MemoryHub:
-- Not an ontology or schema definition (that is RetrievalHub's domain)
+- Not an ontology or schema definition (that belongs to a RAG/semantic-retrieval layer)
 - Not a document or corpus chunk (that is retrieval, not memory)
 - Not immutable -- knowledge can be versioned, contradicted, and retired like any memory
 - Not a separate data store -- it lives in `memory_nodes` with the same governance substrate
@@ -138,15 +138,15 @@ Enterprise-scoped knowledge graduation requires human-in-the-loop approval. The 
 | #240 (extraction pipeline) | Extraction writes `content_type="experiential"` always. Graduation is a separate, downstream process. |
 
 
-## 7. RetrievalHub Boundary
+## 7. The Retrieval Boundary
 
-This proposal **preserves** the boundary defined in `strategy/platform-architecture.md`.
+This proposal **preserves** the memory-vs-retrieval boundary defined in `strategy/platform-architecture.md`.
 
 **MemoryHub knowledge:** Governed assertions that graduated from agent experience. "We use connection pool size 25" is knowledge derived from operational decisions, deployment configurations observed by agents, and team preferences accumulated over time. It is experiential knowledge made durable.
 
-**RetrievalHub knowledge:** Curated reference material from external sources. Architecture documents, compliance standards, API specifications, vendor documentation. It enters the system through ingestion pipelines, not through agent experience.
+**Retrieval-layer (RAG) knowledge:** Curated reference material from external sources. Architecture documents, compliance standards, API specifications, vendor documentation. It enters a RAG stack through ingestion pipelines, not through agent experience.
 
-The test: if the fact emerged from operational history, it is MemoryHub knowledge. If it would exist regardless of any agent's experience (documentation, standards, reference data), it is RetrievalHub's domain.
+The test: if the fact emerged from operational history, it is MemoryHub knowledge. If it would exist regardless of any agent's experience (documentation, standards, reference data), it belongs in the organization's RAG/retrieval layer.
 
 What this proposal explicitly does NOT do:
 - No document ingestion pipeline
@@ -154,7 +154,7 @@ What this proposal explicitly does NOT do:
 - No external knowledge source connectors
 - No SPARQL, OWL, or RDF
 
-MemoryHub's knowledge layer is the experience-to-assertion pipeline. RetrievalHub is the corpus-to-answer pipeline.
+MemoryHub's knowledge layer is the experience-to-assertion pipeline. RAG is the corpus-to-answer pipeline.
 
 
 ## 8. Open Questions (Resolved)

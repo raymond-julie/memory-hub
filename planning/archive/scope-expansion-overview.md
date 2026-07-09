@@ -10,7 +10,7 @@
 
 Colleague feedback from April 2026 validated that these capabilities are category expectations, not scope creep. Developers evaluating agent memory platforms expect: raw conversation persistence, graph-based entity relationships, context compaction, and compiled knowledge synthesis. Shipping only extracted memories leaves MemoryHub at a subset of what the category requires.
 
-The April 8 scoping decision holds: episodic + procedural memory, not semantic retrieval. All four features operate on experiential data — what agents did, observed, and decided — under MemoryHub's existing governance substrate. This is not a pivot toward RetrievalHub territory; it is filling out the experiential memory tier that was always in scope.
+The April 8 scoping decision holds: episodic + procedural memory, not semantic retrieval. All four features operate on experiential data — what agents did, observed, and decided — under MemoryHub's existing governance substrate. This is not a pivot toward semantic retrieval/RAG; it is filling out the experiential memory tier that was always in scope.
 
 The phrase that captured the April discussion: *"letting us into the room we've asked to enter."*
 
@@ -41,7 +41,7 @@ Each feature delivers independent value. The dependency chain indicates what fee
 
 **Graph backend:** PostgreSQL-first. Apache AGE is in Apache Incubator and adds ergonomics but not graph algorithms. Neo4j is justified when deep traversals (>5 hops) or graph algorithms become requirements. Decision revisited at Phase 3 of #170.
 
-**Data ownership boundary:** MemoryHub's graph is experiential — decisions, provenance, rationale chains. RetrievalHub's graph sources are factual — curated knowledge about infrastructure, compliance, reference data. Both can expose graph query surfaces but over different data with different ingestion pipelines.
+**Data ownership boundary:** MemoryHub's graph is experiential — decisions, provenance, rationale chains. A RAG layer's graph sources are factual — curated knowledge about infrastructure, compliance, reference data. Both can expose graph query surfaces but over different data with different ingestion pipelines.
 
 **Thread model:** Inherently n-participant. n=2 (agent + human) is the common case, not the only case. Kagenti multi-agent swarms and A2A handoffs are first-class.
 
