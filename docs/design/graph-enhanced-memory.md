@@ -26,7 +26,7 @@ MemoryHub already has structural advantages most competing systems lack: typed d
 
 PostgreSQL-first is the right default. The survey's analysis of MemoryHub's scale profile (hundreds of agents, thousands of memories per user, 3–4 hop depth) confirms recursive CTEs are sufficient for Phase 1 traversal. AGE remains deferred — it is still in the Apache Incubator as of April 2026, does not auto-create indexes, and has a performance ceiling below dedicated graph databases for the workloads we will eventually need. The honest path is: extend PostgreSQL for Phases 1 and 2, then make a clean, informed decision about a graph computation layer in Phase 3 when actual query patterns are observable.
 
-**Relationship to RetrievalHub**: MemoryHub is the experiential/episodic layer — what this agent knows from its own interactions. Any future RetrievalHub is the factual/document layer — what can be retrieved from a corpus. The entity graph built here is intentionally agent-scoped and conversation-derived. Do not conflate it with a document knowledge graph.
+**Relationship to RAG/retrieval**: MemoryHub is the experiential/episodic layer — what this agent knows from its own interactions. A RAG stack is the factual/document layer — what can be retrieved from a corpus. The entity graph built here is intentionally agent-scoped and conversation-derived. Do not conflate it with a document knowledge graph.
 
 ## Phase 1: Temporal Relationships and Graph-Enhanced Retrieval [Deferred -- Graph-Enhanced Retrieval epic]
 
