@@ -55,6 +55,11 @@ DB_USER = os.environ.get("MEMORYHUB_DB_USER", "memoryhub")
 DB_PASS = os.environ.get("MEMORYHUB_DB_PASS", "memoryhub")
 EMBEDDING_DIM = 384
 
+EMBEDDING_URL = os.environ.get(
+    "MEMORYHUB_EMBEDDING_URL",
+    "https://all-minilm-l6-v2-embedding-model.apps.cluster-n7pd5.n7pd5.sandbox5167.opentlc.com/embed",
+)
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "longmemeval"
 
 VARIANT_FILES = {
@@ -114,6 +119,7 @@ async def run_longmemeval_benchmark(
     max_questions: int | None = None,
     db_url: str | None = None,
     use_keyword: bool = True,
+    real_embeddings: bool = False,
 ) -> LongMemEvalResult:
     """Run LongMemEval against MemoryHub retrieval."""
     data_file = DATA_DIR / VARIANT_FILES[variant]
@@ -137,7 +143,12 @@ async def run_longmemeval_benchmark(
 
     engine = create_async_engine(db_url, pool_size=5, max_overflow=10)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    embedding_service = MockEmbeddingForBench()
+    if real_embeddings:
+        from memoryhub_core.services.embeddings import HttpEmbeddingService
+        embedding_service = HttpEmbeddingService(url=EMBEDDING_URL)
+        logger.info("Using real embeddings: %s", EMBEDDING_URL)
+    else:
+        embedding_service = MockEmbeddingForBench()
 
     t_total = time.perf_counter()
 
@@ -170,7 +181,8 @@ async def run_longmemeval_benchmark(
                     if not content.strip():
                         continue
                     node_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"{tenant_id}-{sid}")
-                    embedding = await embedding_service.embed(content[:2000])
+                    embed_text = content[:500] if real_embeddings else content[:2000]
+                    embedding = await embedding_service.embed(embed_text)
                     node = MemoryNode(
                         id=node_id,
                         content=content[:10000],
@@ -292,6 +304,7 @@ def main():
     parser.add_argument("--max-questions", type=int, default=None)
     parser.add_argument("--db-url", type=str, default=None)
     parser.add_argument("--no-keyword", action="store_true", help="Disable keyword search")
+    parser.add_argument("--real-embeddings", action="store_true", help="Use deployed embedding service")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -306,6 +319,7 @@ def main():
             max_questions=args.max_questions,
             db_url=args.db_url,
             use_keyword=not args.no_keyword,
+            real_embeddings=args.real_embeddings,
         )
     )
 

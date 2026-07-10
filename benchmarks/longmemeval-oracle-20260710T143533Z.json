@@ -1,0 +1,25 @@
+{
+  "benchmark": "longmemeval",
+  "variant": "oracle",
+  "timestamp": "2026-07-10T19:35:32.747892+00:00",
+  "config": {
+    "variant": "oracle",
+    "max_questions": 25,
+    "use_keyword": true,
+    "total_sessions_ingested": 59
+  },
+  "total_questions": 25,
+  "avg_recall_at_5": 0.9933333333333334,
+  "avg_recall_at_10": 1.0,
+  "avg_mrr": 1.0,
+  "avg_latency_ms": 393.8822132797213,
+  "by_type": {
+    "temporal-reasoning": {
+      "count": 25,
+      "avg_recall_at_5": 0.9933333333333334,
+      "avg_recall_at_10": 1.0,
+      "avg_mrr": 1.0
+    }
+  },
+  "total_seconds": 22.619061458000942
+}
