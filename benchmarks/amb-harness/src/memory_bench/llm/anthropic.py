@@ -39,18 +39,28 @@ class AnthropicLLM(LLM):
                     tools=[tool_def],
                     tool_choice={"type": "tool", "name": "respond"},
                 )
-                # Extract the tool_use content block
                 for block in response.content:
                     if block.type == "tool_use" and block.name == "respond":
-                        return block.input
+                        result = block.input
+                        missing = [k for k in schema.required if k not in result]
+                        if missing:
+                            raise ValueError(
+                                f"Schema fields {missing} missing from response: "
+                                f"{list(result.keys())}"
+                            )
+                        return result
                 raise RuntimeError("No tool_use block found in response")
             except Exception as e:
                 last_exc = e
                 msg = str(e)
-                if "429" in msg or "529" in msg or "overloaded" in msg.lower():
-                    if attempt < _MAX_RETRIES - 1:
-                        time.sleep(delay)
-                        delay *= 2
-                        continue
+                retryable = (
+                    "429" in msg or "529" in msg
+                    or "overloaded" in msg.lower()
+                    or isinstance(e, ValueError)
+                )
+                if retryable and attempt < _MAX_RETRIES - 1:
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
                 raise
         raise RuntimeError(f"Anthropic request failed after {_MAX_RETRIES} retries: {last_exc}")
