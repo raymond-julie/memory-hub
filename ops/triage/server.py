@@ -69,7 +69,11 @@ def run_triage(event_type: str, prompt: str, number: int) -> None:
 
     try:
         result = subprocess.run(
-            ["claude", "-p", "--verbose", prompt],
+            [
+                "claude", "-p", "--verbose",
+                "--allowedTools", "Bash(gh issue:*),Bash(gh pr:*)",
+            ],
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=CLAUDE_TIMEOUT,
