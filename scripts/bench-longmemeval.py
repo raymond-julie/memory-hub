@@ -194,7 +194,7 @@ async def run_longmemeval_benchmark(
                         embedding=embedding,
                         content_type="experiential",
                     )
-                    db_session.add(node)
+                    await db_session.merge(node)
                     session_id_to_node[str(sid)] = str(node_id)
                 await db_session.commit()
 
