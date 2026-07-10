@@ -1,0 +1,341 @@
+{
+  "benchmark": "cluster-retrieval",
+  "timestamp": "2026-07-10T18:06:21.360964+00:00",
+  "config": {
+    "embedding_url": "https://all-minilm-l6-v2-embedding-model.apps.cluster-n7pd5.n7pd5.sandbox5167.opentlc.com/embed",
+    "reranker_url": "https://ms-marco-minilm-l12-v2-reranker-model.apps.cluster-n7pd5.n7pd5.sandbox5167.opentlc.com",
+    "db_host": "localhost"
+  },
+  "memory_count": 733,
+  "queries": [
+    {
+      "query": "parmesan cheese",
+      "description": "exact preference recall",
+      "vector_latency_ms": 821.2,
+      "vector_results": 10,
+      "vector_top3": [
+        "My favorite cheese is parmesan. [scope=user, weight=0.7, branches=0, rationale=n",
+        "User prefers Parmesan cheese. [scope=user, weight=1.0, branches=0, rationale=no]",
+        "User prefers Parmesan cheese [scope=user, weight=0.7, branches=0, rationale=no]"
+      ],
+      "hybrid_latency_ms": 1410.3,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "User prefers Parmesan cheese [scope=user, weight=0.7, branches=0, rationale=no]",
+        "My favorite cheese is parmesan. [scope=user, weight=0.7, branches=0, rationale=n",
+        "User prefers Parmesan cheese. [scope=user, weight=1.0, branches=0, rationale=no]"
+      ],
+      "keyword_matches": 6,
+      "new_in_hybrid": 0
+    },
+    {
+      "query": "CORS_ALLOWED_ORIGINS",
+      "description": "config key exact match",
+      "vector_latency_ms": 243.3,
+      "vector_results": 10,
+      "vector_top3": [
+        "Agent-memory-ergonomics Layer 2 shipped 2026-04-07 (#58). NEW-1 (RRF blend over ",
+        "Claude Code project settings files (.claude/settings.local.json) can accumulate ",
+        "FIPS 140-2/140-3 compliance is required for all cryptographic operations in gove"
+      ],
+      "hybrid_latency_ms": 2634.2,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "Claude Code project settings files (.claude/settings.local.json) can accumulate ",
+        "Agent-memory-ergonomics Layer 2 shipped 2026-04-07 (#58). NEW-1 (RRF blend over ",
+        "All container images must use Red Hat UBI base images. Third-party base images a"
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 3
+    },
+    {
+      "query": "kubectl apply deployment.yaml",
+      "description": "CLI command recall",
+      "vector_latency_ms": 290.2,
+      "vector_results": 10,
+      "vector_top3": [
+        "memory-hub mcp-server deploy script had a latent bug exposed by #88 hardening (2",
+        "All deploy scripts (check-prereqs, run-migrations, run-seed-oauth-clients, valid",
+        "memory-hub auth deploy script bug found during #88 audit (2026-04-08): apply pip"
+      ],
+      "hybrid_latency_ms": 2659.5,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "memory-hub auth deploy script bug found during #88 audit (2026-04-08): apply pip",
+        "memory-hub mcp-server deploy script had a latent bug exposed by #88 hardening (2",
+        "memory-hub auth deploy fix shipped 2026-04-08 as part of #88: removed the placeh"
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 3
+    },
+    {
+      "query": "register_session api_key",
+      "description": "API function name",
+      "vector_latency_ms": 295.4,
+      "vector_results": 10,
+      "vector_top3": [
+        "MemoryHub SDK v0.5.0 restores api_key auth alongside OAuth 2.1. Constructor: Mem",
+        "memory-hub #62 shipped 2026-04-07. Pattern E real-time push broadcast. Files: me",
+        "memory-hub Valkey schema for session focus (#61/#62). Two key prefixes: (1) memo"
+      ],
+      "hybrid_latency_ms": 2753.8,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "MemoryHub SDK v0.5.0 restores api_key auth alongside OAuth 2.1. Constructor: Mem",
+        "2026-04-08 credential rotation in progress: rotating mh-dev-wjackson-2026 and me",
+        "memory-hub #62 shipped 2026-04-07. Pattern E real-time push broadcast. Files: me"
+      ],
+      "keyword_matches": 2,
+      "new_in_hybrid": 2
+    },
+    {
+      "query": "content_type experiential behavioral",
+      "description": "enum values",
+      "vector_latency_ms": 247.8,
+      "vector_results": 10,
+      "vector_top3": [
+        "memory-hub #62 SDK full_content receive-side is DEFERRED. The custom notificatio",
+        "Smoke test: deploy verification for migrations 016-018. Content_type and content",
+        "v2 blog \"When Agent Memory Becomes a Platform Concern\" PUBLISHED on Medium ~earl"
+      ],
+      "hybrid_latency_ms": 2545.9,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "Smoke test: deploy verification for migrations 016-018. Content_type and content",
+        "memory-hub #62 SDK full_content receive-side is DEFERRED. The custom notificatio",
+        "Every (media company) published \"We Gave Every Employee an AI Agent\" (May 2026) "
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 4
+    },
+    {
+      "query": "pgvector cosine_distance",
+      "description": "library function",
+      "vector_latency_ms": 304.4,
+      "vector_results": 10,
+      "vector_top3": [
+        "Originally planned Milvus for vectors + Neo4j for graph + MinIO for objects. Con",
+        "PostgreSQL with the pgvector extension handles all vector search needs for Memor",
+        "Agent-memory-ergonomics Layer 2 shipped 2026-04-07 (#58). NEW-1 (RRF blend over "
+      ],
+      "hybrid_latency_ms": 2245.1,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "Agent-memory-ergonomics Layer 2 shipped 2026-04-07 (#58). NEW-1 (RRF blend over ",
+        "memory-hub cross-encoder reranker behavior: ms-marco-MiniLM-L12-v2 alone (withou",
+        "PostgreSQL with the pgvector extension handles all vector search needs for Memor"
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 2
+    },
+    {
+      "query": "alembic migration upgrade",
+      "description": "tool command",
+      "vector_latency_ms": 296.8,
+      "vector_results": 10,
+      "vector_top3": [
+        "memory-hub #107 alembic drift verification discovered alembic/script.py.mako was",
+        "memory-hub contributor onboarding landed 2026-04-08. Five cleanup PRs merged via",
+        "memory-hub repo + project board moved to redhat-ai-americas org on 2026-04-08. S"
+      ],
+      "hybrid_latency_ms": 2545.3,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "memory-hub #107 alembic drift verification discovered alembic/script.py.mako was",
+        "memory-hub contributor onboarding landed 2026-04-08. Five cleanup PRs merged via",
+        "Smoke test: deploy verification for migrations 016-018. Content_type and content"
+      ],
+      "keyword_matches": 1,
+      "new_in_hybrid": 4
+    },
+    {
+      "query": "FIPS compliance",
+      "description": "acronym + term",
+      "vector_latency_ms": 287.2,
+      "vector_results": 10,
+      "vector_top3": [
+        "FIPS 140-2/140-3 compliance is required for all cryptographic operations in gove",
+        "What is fips-agents in one sentence? [scope=project, weight=0.7, branches=0, rat",
+        "FIPS-mode OpenShift clusters enforce crypto restrictions at the kernel/OpenSSL l"
+      ],
+      "hybrid_latency_ms": 2540.0,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "FIPS 140-2/140-3 compliance is required for all cryptographic operations in gove",
+        "Red Hat is the employer and primary customer. All production workloads run on Op",
+        "FIPS-mode OpenShift clusters enforce crypto restrictions at the kernel/OpenSSL l"
+      ],
+      "keyword_matches": 2,
+      "new_in_hybrid": 1
+    },
+    {
+      "query": "how does authentication work",
+      "description": "semantic auth",
+      "vector_latency_ms": 258.7,
+      "vector_results": 10,
+      "vector_top3": [
+        "MemoryHub auth architecture decisions (2026-04-05): (1) OAuth 2.1 Authorization ",
+        "MemoryHub MCP RBAC enforcement complete (2026-04-07). Authorization module at co",
+        "MemoryHub OAuth 2.1 auth service (memoryhub-auth/) deployed 2026-04-05. FastAPI "
+      ],
+      "hybrid_latency_ms": 2553.5,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "MemoryHub auth architecture decisions (2026-04-05): (1) OAuth 2.1 Authorization ",
+        "FastMCP JWTVerifier limitation and fix (2026-04-07): JWTVerifier validates JWT t",
+        "MemoryHub MCP RBAC enforcement complete (2026-04-07). Authorization module at co"
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 2
+    },
+    {
+      "query": "what decisions were made about the database",
+      "description": "semantic db",
+      "vector_latency_ms": 295.6,
+      "vector_results": 10,
+      "vector_top3": [
+        "EU AI Act compliance as MemoryHub's out-of-the-box value prop (decided 2026-04-1",
+        "Graph database strategy for MemoryHub (decided 2026-04-10): PostgreSQL-first, in",
+        "MemoryHub scoping decision (2026-04-08): MemoryHub is the episodic + procedural "
+      ],
+      "hybrid_latency_ms": 2735.1,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "Graph database strategy for MemoryHub (decided 2026-04-10): PostgreSQL-first, in",
+        "MemoryHub scoping decision (2026-04-08): MemoryHub is the episodic + procedural ",
+        "EU AI Act compliance as MemoryHub's out-of-the-box value prop (decided 2026-04-1"
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 3
+    },
+    {
+      "query": "user preferences and settings",
+      "description": "semantic prefs",
+      "vector_latency_ms": 296.8,
+      "vector_results": 10,
+      "vector_top3": [
+        "Claude Code project settings files (.claude/settings.local.json) can accumulate ",
+        "User prefers Parmesan cheese [scope=user, weight=0.7, branches=0, rationale=no]",
+        "User prefers Parmesan cheese. [scope=user, weight=1.0, branches=0, rationale=no]"
+      ],
+      "hybrid_latency_ms": 1891.4,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "Claude Code project settings files (.claude/settings.local.json) can accumulate ",
+        "User prefers Python 3.11 for all new projects. [scope=user, weight=0.7, branches",
+        "User prefers Parmesan cheese. [scope=user, weight=1.0, branches=0, rationale=no]"
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 2
+    },
+    {
+      "query": "deployment architecture for the MCP server",
+      "description": "semantic deploy",
+      "vector_latency_ms": 286.1,
+      "vector_results": 10,
+      "vector_top3": [
+        "memory-hub #88 closed 2026-04-08. All three components (mcp-server, ui, auth) no",
+        "MCP servers are the preferred integration pattern for AI agent capabilities. Use",
+        "When scaffolding a new MCP server from the fips-agents CLI template, always run "
+      ],
+      "hybrid_latency_ms": 2639.4,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "memory-hub #88 closed 2026-04-08. All three components (mcp-server, ui, auth) no",
+        "When scaffolding a new MCP server from the fips-agents CLI template, always run ",
+        "memory-hub mcp-server deploy script had a latent bug exposed by #88 hardening (2"
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 3
+    },
+    {
+      "query": "how to search for memories",
+      "description": "semantic search",
+      "vector_latency_ms": 303.6,
+      "vector_results": 10,
+      "vector_top3": [
+        "Microsoft Memento (github.com/microsoft/memento, arXiv:2604.09852) research comp",
+        "memory-hub #46 Phase 4 shipped 2026-04-08. Plumbed tenant_id (keyword-only, requ",
+        "PostgreSQL with the pgvector extension handles all vector search needs for Memor"
+      ],
+      "hybrid_latency_ms": 2976.4,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "PostgreSQL with the pgvector extension handles all vector search needs for Memor",
+        "MemoryHub uses PostgreSQL with pgvector for vector similarity search. Single dat",
+        "memory-hub cross-encoder reranker behavior: ms-marco-MiniLM-L12-v2 alone (withou"
+      ],
+      "keyword_matches": 9,
+      "new_in_hybrid": 4
+    },
+    {
+      "query": "conversation thread persistence",
+      "description": "semantic threads",
+      "vector_latency_ms": 242.2,
+      "vector_results": 10,
+      "vector_top3": [
+        "Conversation persistence survey completed 2026-04-10 (research/conversation-pers",
+        "Design decisions from Lanham article analysis (2026-04-10): (1) Memories should ",
+        "Microsoft Memento (github.com/microsoft/memento, arXiv:2604.09852) research comp"
+      ],
+      "hybrid_latency_ms": 2865.0,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "Conversation persistence survey completed 2026-04-10 (research/conversation-pers",
+        "MemoryHub scope expansion decision (2026-04-10): Two new subsystems approved for",
+        "Follow-up to v2 reframed (2026-05-06): the original \"v3 memory taxonomy\" idea sp"
+      ],
+      "keyword_matches": 3,
+      "new_in_hybrid": 4
+    },
+    {
+      "query": "agent memory governance and compliance",
+      "description": "semantic governance",
+      "vector_latency_ms": 295.5,
+      "vector_results": 10,
+      "vector_top3": [
+        "EU AI Act compliance as MemoryHub's out-of-the-box value prop (decided 2026-04-1",
+        "Every (media company) published \"We Gave Every Employee an AI Agent\" (May 2026) ",
+        "Working-memory and ephemeral-state forensics is a SEPARATE platform concern from"
+      ],
+      "hybrid_latency_ms": 2771.3,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "EU AI Act compliance as MemoryHub's out-of-the-box value prop (decided 2026-04-1",
+        "Working-memory and ephemeral-state forensics is a SEPARATE platform concern from",
+        "Working-memory and ephemeral-state forensics is a SEPARATE platform concern from"
+      ],
+      "keyword_matches": 1,
+      "new_in_hybrid": 3
+    },
+    {
+      "query": "integration with external systems",
+      "description": "semantic integration",
+      "vector_latency_ms": 241.6,
+      "vector_results": 10,
+      "vector_top3": [
+        "Red Hat ecosystem is the standard: UBI base images, OpenShift for orchestration,",
+        "Multica (github.com/multica-ai/multica) research completed 2026-04-21. Open-sour",
+        "LlamaStack integration strategy (decided 2026-04-06): Three-phase approach. Phas"
+      ],
+      "hybrid_latency_ms": 2567.0,
+      "hybrid_results": 10,
+      "hybrid_top3": [
+        "Kagenti integration strategy (decided 2026-04-05): Kagenti (github.com/kagenti/k",
+        "LlamaStack integration strategy (decided 2026-04-06): Three-phase approach. Phas",
+        "MemoryHub has two distinct integration surfaces for agents, serving different pu"
+      ],
+      "keyword_matches": 0,
+      "new_in_hybrid": 5
+    }
+  ],
+  "summary": {
+    "vector_avg_latency_ms": 312.9,
+    "hybrid_avg_latency_ms": 2520.8,
+    "avg_keyword_matches": 1.5,
+    "queries_with_keyword_hits": 7,
+    "queries_with_new_results": 15,
+    "avg_new_results_per_query": 2.81
+  },
+  "total_seconds": 47.63530404099947
+}
