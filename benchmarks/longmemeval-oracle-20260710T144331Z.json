@@ -1,0 +1,55 @@
+{
+  "benchmark": "longmemeval",
+  "variant": "oracle",
+  "timestamp": "2026-07-10T19:43:30.733650+00:00",
+  "config": {
+    "variant": "oracle",
+    "max_questions": null,
+    "use_keyword": true,
+    "total_sessions_ingested": 948
+  },
+  "total_questions": 500,
+  "avg_recall_at_5": 0.999,
+  "avg_recall_at_10": 1.0,
+  "avg_mrr": 1.0,
+  "avg_latency_ms": 372.65491393398406,
+  "by_type": {
+    "temporal-reasoning": {
+      "count": 133,
+      "avg_recall_at_5": 0.9962406015037594,
+      "avg_recall_at_10": 1.0,
+      "avg_mrr": 1.0
+    },
+    "multi-session": {
+      "count": 133,
+      "avg_recall_at_5": 1.0,
+      "avg_recall_at_10": 1.0,
+      "avg_mrr": 1.0
+    },
+    "knowledge-update": {
+      "count": 78,
+      "avg_recall_at_5": 1.0,
+      "avg_recall_at_10": 1.0,
+      "avg_mrr": 1.0
+    },
+    "single-session-preference": {
+      "count": 30,
+      "avg_recall_at_5": 1.0,
+      "avg_recall_at_10": 1.0,
+      "avg_mrr": 1.0
+    },
+    "single-session-assistant": {
+      "count": 56,
+      "avg_recall_at_5": 1.0,
+      "avg_recall_at_10": 1.0,
+      "avg_mrr": 1.0
+    },
+    "single-session-user": {
+      "count": 70,
+      "avg_recall_at_5": 1.0,
+      "avg_recall_at_10": 1.0,
+      "avg_mrr": 1.0
+    }
+  },
+  "total_seconds": 430.4604254170008
+}

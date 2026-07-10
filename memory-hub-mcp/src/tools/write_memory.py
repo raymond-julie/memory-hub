@@ -173,10 +173,11 @@ async def write_memory(
         str | None,
         Field(
             description=(
-                "(Advanced) Memory content type. 'declarative' (default) for "
-                "facts and preferences, 'behavioral' for demonstrated patterns "
-                "and successful approaches. Behavioral memories are not injected "
-                "by default — use the reconstruct action to retrieve them."
+                "(Advanced) Memory content type. Defaults to 'experiential' "
+                "(agent-created memories). Use 'declarative' for facts and "
+                "preferences, 'behavioral' for demonstrated patterns and "
+                "successful approaches. Behavioral memories are not injected "
+                "by default -- use the reconstruct action to retrieve them."
             ),
         ),
     ] = None,
