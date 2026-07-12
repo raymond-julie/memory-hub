@@ -45,7 +45,6 @@ class MemoryHubProvider(MemoryProvider):
         self._doc_to_memory_id: dict[str, str] = {}
         self._memory_to_doc_id: dict[str, str] = {}
         self._reset = False
-        self._client: MemoryHubClient | None = None
 
     def prepare(self, store_dir: Path, unit_ids: set[str] | None = None, reset: bool = True) -> None:
         self._url = os.environ.get("MEMORYHUB_URL")
@@ -134,19 +133,17 @@ class MemoryHubProvider(MemoryProvider):
     async def _run_retrieve(
         self, query: str, k: int, user_id: str | None, query_timestamp: str | None,
     ) -> tuple[list[Document], dict | None]:
-        if self._client is None:
-            self._client = MemoryHubClient(url=self._url, api_key=self._api_key)
-            await self._client.__aenter__()
-
         owner = f"amb-{user_id}" if user_id else "amb-default"
-        results = await self._client.search(
-            query=query,
-            max_results=k,
-            owner_id=owner,
-            project_id=self._project_id,
-            weight_threshold=0.0,
-            mode="full_only",
-        )
+
+        async with MemoryHubClient(url=self._url, api_key=self._api_key) as client:
+            results = await client.search(
+                query=query,
+                max_results=k,
+                owner_id=owner,
+                project_id=self._project_id,
+                weight_threshold=0.0,
+                mode="full_only",
+            )
 
         documents = []
         for memory in results.results:
@@ -160,6 +157,4 @@ class MemoryHubProvider(MemoryProvider):
         return documents, None
 
     def cleanup(self) -> None:
-        if self._client is not None:
-            asyncio.run(self._client.__aexit__(None, None, None))
-            self._client = None
+        pass
