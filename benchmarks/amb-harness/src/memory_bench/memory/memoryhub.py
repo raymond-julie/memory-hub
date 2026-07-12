@@ -8,6 +8,10 @@ Required env vars:
     MEMORYHUB_API_KEY    -- API key for register_session auth
     MEMORYHUB_PROJECT_ID -- project for benchmark memories (default: amb-benchmark)
 
+Optional env vars:
+    MEMORYHUB_DISABLED_SIGNALS -- comma-separated signal names to disable
+                                  (reranker, focus, keyword, domain, graph)
+
 Reset-only env vars (raw SQL DELETE for test scaffolding):
     MEMORYHUB_DB_HOST    -- default localhost
     MEMORYHUB_DB_PORT    -- default 25432
@@ -45,6 +49,7 @@ class MemoryHubProvider(MemoryProvider):
         self._doc_to_memory_id: dict[str, str] = {}
         self._memory_to_doc_id: dict[str, str] = {}
         self._reset = False
+        self._disabled_signals: list[str] | None = None
 
     def prepare(self, store_dir: Path, unit_ids: set[str] | None = None, reset: bool = True) -> None:
         self._url = os.environ.get("MEMORYHUB_URL")
@@ -62,6 +67,12 @@ class MemoryHubProvider(MemoryProvider):
         db_pass = os.environ.get("MEMORYHUB_DB_PASS", "")
         db_name = os.environ.get("MEMORYHUB_DB_NAME", "memoryhub")
         self._db_url = f"postgresql+asyncpg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+
+        raw_disabled = os.environ.get("MEMORYHUB_DISABLED_SIGNALS", "")
+        self._disabled_signals = (
+            [s.strip() for s in raw_disabled.split(",") if s.strip()]
+            if raw_disabled else None
+        )
 
         self._doc_to_memory_id.clear()
         self._memory_to_doc_id.clear()
@@ -143,6 +154,7 @@ class MemoryHubProvider(MemoryProvider):
                 project_id=self._project_id,
                 weight_threshold=0.0,
                 mode="full_only",
+                disabled_signals=self._disabled_signals,
             )
 
         documents = []
