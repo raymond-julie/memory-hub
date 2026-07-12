@@ -1,0 +1,19 @@
+{
+  "dataset": "personamem",
+  "split": "32k",
+  "category": null,
+  "memory_provider": "memoryhub",
+  "run_name": "memoryhub-chunked",
+  "mode": "rag",
+  "oracle": false,
+  "total_queries": 589,
+  "correct": 304,
+  "accuracy": 0.5161290322580645,
+  "ingestion_time_ms": 266671.4,
+  "ingested_docs": 195,
+  "description": "Layer 1: SDK provider with chunking active, Flash Lite answer model, not-leaderboard-comparable",
+  "answer_llm": "gemini:gemini-3.1-flash-lite",
+  "judge_llm": "anthropic:claude-sonnet-4-6",
+  "avg_retrieve_time_ms": 1052.7,
+  "avg_context_tokens": 1192.6
+}

@@ -68,7 +68,28 @@ Notes:
 | Cognee | Chunking + graph entity extraction | 81.8% |
 | **MemoryHub** | **Hybrid search, no extraction, no chunking in benchmark path** | **81.2%** |
 
-Result files: `amb-outputs/personamem/memoryhub/rag/32k-summary.json`, `amb-outputs/personamem/memoryhub-flash-lite/rag/32k-summary.json`, `amb-outputs/personamem/bm25/rag/32k-summary.json`
+Result files: `amb-outputs/personamem/_archive/memoryhub-pro-unchunked-20260712/`, `amb-outputs/personamem/_archive/memoryhub-flash-lite-unchunked-20260712/`, `amb-outputs/personamem/bm25/`
+
+#### Run: 2026-07-12 (v0.2, SDK provider with chunking, Flash Lite)
+
+**Pipeline state:** Same hybrid search pipeline, but ingestion now goes through the MemoryHub SDK (`client.write()`) which triggers server-side `semantic_chunk()`. Documents are stored as parent nodes with chunk children. Search uses `weight_threshold=0.0` and `mode="full_only"` to return parent documents only.
+
+**Answer LLM:** Gemini 3.1 Flash Lite (not leaderboard-comparable).
+
+| Run | Model | Queries | Correct | Accuracy | Avg Context Tokens | Avg Retrieve ms |
+|-----|-------|---------|---------|----------|--------------------|-----------------|
+| unchunked | Flash Lite | 589 | 417 | 70.8% | 26,695 | 3,168 |
+| **chunked (SDK)** | **Flash Lite** | **589** | **304** | **51.6%** | **1,193** | **1,053** |
+
+Result file: `amb-outputs/personamem/memoryhub-chunked/rag/32k.json`
+
+**Finding: chunking caused a -19.2 point accuracy regression.** The root cause is clear from avg context tokens: the chunked run returns 22x less context per query (1,193 vs 26,695 tokens). The `mode="full_only"` filter excludes chunks from results, but parent document retrieval is also degraded, likely because:
+
+1. Parent documents are now competing with their own chunks in the vector index, diluting retrieval scores.
+2. The `weight=0.0` assigned to chunks may be interfering with RRF score aggregation even with `weight_threshold=0.0`.
+3. Semantic chunking changes the embedding landscape; parent embeddings are computed from the full document but ranked against chunk-level embeddings.
+
+This confirms that naive chunking without tuning hurts retrieval quality. Tuning work (#343) should investigate: disabling chunk embedding (store chunks for display but don't embed), adjusting chunk weights, or switching to a retrieve-chunk-then-expand-to-parent strategy.
 
 #### Analysis
 
@@ -81,6 +102,8 @@ MemoryHub achieves 81.2% without document chunking or LLM extraction, competitiv
 **LLM model impact:** Gemini Pro adds +10.4 points over Flash Lite on MemoryHub (81.2% vs 70.8%), and the BM25 baseline also improves with better models (Flash Lite 67.7% vs Haiku 62.6%). Model quality is a significant factor alongside retrieval quality.
 
 **MemoryHub retrieval delta:** MemoryHub adds +3.1 points over BM25 with the same model (Flash Lite: 70.8% vs 67.7%). The delta is modest because the reranker is disabled on PersonaMem; with the reranker active (shorter documents), the delta is larger per the cluster retrieval benchmark results.
+
+**Chunking regression:** The -19.2 point drop from chunking (70.8% -> 51.6%) shows that chunking must be carefully tuned before it helps. The dominant signal is context volume: unchunked returns ~27K tokens of context, chunked returns ~1.2K. The retrieval pipeline needs either chunk-to-parent expansion or separate treatment of chunk vs parent embeddings.
 
 ### 2. LongMemEval (ICLR 2025) -- Session-Level Retrieval
 
