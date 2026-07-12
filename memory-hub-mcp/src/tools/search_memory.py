@@ -680,6 +680,17 @@ async def search_memory(
             ),
         ),
     ] = None,
+    disabled_signals: Annotated[
+        list[str] | None,
+        Field(
+            description=(
+                "(Advanced) RRF signals to disable for ablation testing. "
+                "Valid names: reranker, focus, keyword, domain, graph. "
+                "Vector similarity is always active. "
+                "Disabled signals are reported in the response metadata."
+            ),
+        ),
+    ] = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """Search memories using semantic similarity.
@@ -883,6 +894,7 @@ async def search_memory(
                 entity_names=entities,
                 content_type=content_type,
                 temporal_status=temporal_status,
+                disabled_signals=set(disabled_signals) if disabled_signals else None,
             )
             graph_bundle = bundle
             results = bundle.results
@@ -894,6 +906,7 @@ async def search_memory(
                 "used_reranker": bundle.used_reranker,
                 "fallback_reason": bundle.fallback_reason,
                 "keyword_matches": bundle.keyword_matches,
+                "disabled_signals": sorted(bundle.disabled_signals) if bundle.disabled_signals else [],
             }
             pattern_signals = bundle.pattern_signals
         else:
@@ -1173,6 +1186,8 @@ async def search_memory(
             response["pivot_reason"] = focus_meta["pivot_reason"]
             if focus_meta["fallback_reason"]:
                 response["focus_fallback_reason"] = focus_meta["fallback_reason"]
+        if focus_meta is not None and focus_meta.get("disabled_signals"):
+            response["disabled_signals"] = focus_meta["disabled_signals"]
         if graph_depth > 0 and graph_bundle is not None:
             response["graph_neighbors_added"] = graph_bundle.graph_neighbors_added
             if graph_bundle.graph_fallback_reason:

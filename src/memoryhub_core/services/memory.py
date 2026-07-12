@@ -58,6 +58,8 @@ RRF_K = 60
 # touching service code.
 DEFAULT_PIVOT_THRESHOLD = 0.55
 
+VALID_SIGNAL_NAMES = frozenset({"reranker", "focus", "keyword", "domain", "graph"})
+
 
 async def create_memory(
     data: MemoryNodeCreate,
@@ -1124,6 +1126,7 @@ class FocusedSearchResult:
     graph_fallback_reason: str | None = None
     keyword_matches: int = 0
     pattern_signals: list[PatternSignal] = field(default_factory=list)
+    disabled_signals: set[str] = field(default_factory=set)
 
 
 def _cosine_distance(a: list[float], b: list[float]) -> float:
@@ -1179,6 +1182,7 @@ async def search_memories_with_focus(
     content_type: str | None = None,
     temporal_status: str | None = None,
     keyword_boost_weight: float = 0.15,
+    disabled_signals: set[str] | None = None,
 ) -> FocusedSearchResult:
     """Two-vector retrieval with session focus bias.
 
@@ -1208,6 +1212,8 @@ async def search_memories_with_focus(
     Returns a FocusedSearchResult dataclass; see its docstring for
     field semantics.
     """
+    _disabled = disabled_signals or set()
+
     if not focus_string or session_focus_weight <= 0.0:
         # No-focus short-circuit. Skips both the focus embed and the
         # rerank network call. Mirrors the production-tuning rule
@@ -1307,7 +1313,7 @@ async def search_memories_with_focus(
     graph_neighbors_added = 0
     graph_fallback_reason: str | None = None
     graph_neighbor_map: dict[uuid.UUID, int] = {}  # node_id -> hop_distance
-    if graph_depth > 0:
+    if graph_depth > 0 and "graph" not in _disabled:
         from memoryhub_core.services.graph import collect_graph_neighbors
 
         seed_ids = [node.id for node in candidate_nodes]
@@ -1347,7 +1353,7 @@ async def search_memories_with_focus(
     # Cross-encoder rerank stage (top RERANK_POOL_SIZE candidates).
     used_reranker = False
     fallback_reason: str | None = None
-    if reranker is not None and getattr(reranker, "is_configured", True):
+    if reranker is not None and getattr(reranker, "is_configured", True) and "reranker" not in _disabled:
         rerank_pool = candidate_nodes[:RERANK_POOL_SIZE]
         try:
             order = await batched_rerank(
@@ -1383,20 +1389,23 @@ async def search_memories_with_focus(
 
     # Focus cosine ranks across the candidate pool. Distance from the
     # focus vector ascending = best focus match first.
-    focus_scored = sorted(
-        candidate_nodes,
-        key=lambda n: _cosine_distance(focus_embedding, list(n.embedding))
-        if n.embedding is not None
-        else 1.0,
-    )
-    rank_focus: dict[uuid.UUID, int] = {
-        node.id: idx + 1 for idx, node in enumerate(focus_scored)
-    }
+    use_focus = "focus" not in _disabled
+    rank_focus: dict[uuid.UUID, int] = {}
+    if use_focus:
+        focus_scored = sorted(
+            candidate_nodes,
+            key=lambda n: _cosine_distance(focus_embedding, list(n.embedding))
+            if n.embedding is not None
+            else 1.0,
+        )
+        rank_focus = {
+            node.id: idx + 1 for idx, node in enumerate(focus_scored)
+        }
 
     # Domain ranks: when domain tags are provided, rank candidates by
     # overlap count (more matching domains = better rank). This becomes
     # a third RRF signal alongside query and focus.
-    use_domain_boost = bool(domains) and domain_boost_weight > 0.0
+    use_domain_boost = bool(domains) and domain_boost_weight > 0.0 and "domain" not in _disabled
     rank_domain: dict[uuid.UUID, int] = {}
     if use_domain_boost:
         domain_set = {d.lower() for d in domains}
@@ -1415,7 +1424,7 @@ async def search_memories_with_focus(
     # hop distance (hop 1 = rank 1, hop 2 = rank N+1, etc.). Seeds
     # that appear in graph_neighbor_map also receive a graph rank.
     # Nodes not reachable via the graph get the miss rank.
-    use_graph_boost = graph_depth > 0 and bool(graph_neighbor_map)
+    use_graph_boost = graph_depth > 0 and bool(graph_neighbor_map) and "graph" not in _disabled
     rank_graph: dict[uuid.UUID, int] = {}
     if use_graph_boost:
         # Group nodes by hop distance and assign sequential ranks,
@@ -1431,7 +1440,7 @@ async def search_memories_with_focus(
     # Keyword recall: run a parallel tsvector query to find candidates
     # that match query keywords but may have been missed by vector
     # recall (e.g., exact CLI commands, config keys, acronyms).
-    use_keyword_boost = keyword_boost_weight > 0.0 and use_pgvector
+    use_keyword_boost = keyword_boost_weight > 0.0 and use_pgvector and "keyword" not in _disabled
     rank_keyword: dict[uuid.UUID, int] = {}
     if use_keyword_boost:
         try:
@@ -1466,14 +1475,15 @@ async def search_memories_with_focus(
     # rank_keyword carries keyword match ranks (when active).
     # Boost weights are carved proportionally from query and focus
     # so all weights always sum to 1.0.
-    base_q = 1.0 - session_focus_weight
+    effective_focus_weight = session_focus_weight if use_focus else 0.0
+    base_q = 1.0 - effective_focus_weight
     weight_d = domain_boost_weight if use_domain_boost else 0.0
     weight_g = graph_boost_weight if use_graph_boost else 0.0
     weight_k = keyword_boost_weight if use_keyword_boost else 0.0
     carve_total = weight_d + weight_g + weight_k
     remaining = 1.0 - carve_total
     weight_q = remaining * base_q
-    weight_f = remaining * session_focus_weight
+    weight_f = remaining * effective_focus_weight
 
     blended_scores: list[tuple[MemoryNode, float]] = []
     for node in candidate_nodes:
@@ -1603,6 +1613,7 @@ async def search_memories_with_focus(
         graph_fallback_reason=graph_fallback_reason,
         keyword_matches=len(rank_keyword),
         pattern_signals=pattern_signals,
+        disabled_signals=_disabled,
     )
 
 
