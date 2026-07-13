@@ -1,5 +1,5 @@
-name: memoryhub-smoke-20q
-description: 20-query PersonaMem smoke test for EvalHub adapter validation
+name: ablation-bm25-only
+description: Pure BM25 baseline (all non-BM25 signals disabled)
 model:
   url: https://generativelanguage.googleapis.com
   name: gemini-3.1-flash-lite
@@ -12,7 +12,9 @@ benchmarks:
       mode: library
       dataset: personamem
       dataset_variant: "32k"
-      memory_provider: bm25
-      query_limit: 20
+      memory_provider: memoryhub
+      skip_ingestion: true
+      query_limit: 589
+      disabled_signals: reranker,focus,keyword,domain,graph
 experiment:
   name: memoryhub/personamem-mcq/32k
