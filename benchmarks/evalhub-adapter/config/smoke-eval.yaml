@@ -1,0 +1,18 @@
+name: memoryhub-smoke-20q
+description: 20-query PersonaMem smoke test for EvalHub adapter validation
+model:
+  url: https://generativelanguage.googleapis.com
+  name: gemini-3.1-flash-lite
+  auth:
+    secret_ref: gemini-api-key
+benchmarks:
+  - id: personamem-mcq
+    provider_id: 7b488af5-50b7-4793-8cdc-7e0f2efee1d8
+    parameters:
+      mode: library
+      dataset: personamem
+      dataset_variant: "32k"
+      memory_provider: bm25
+      query_limit: 20
+experiment:
+  name: memoryhub/personamem-mcq/32k

@@ -1,0 +1,14 @@
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: EvalHub
+metadata:
+  name: memoryhub-evalhub
+  namespace: memoryhub-eval
+spec:
+  replicas: 1
+  database:
+    type: sqlite
+  env:
+    - name: MLFLOW_TRACKING_URI
+      value: https://mlflow.redhat-ods-applications.svc:8443
+    - name: DB_URL
+      value: "file:/tmp/evalhub.db?cache=shared"
