@@ -15,7 +15,7 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import asyncpg
 import httpx
@@ -195,7 +195,7 @@ async def run_preflight(
             },
             "corpus": await check_corpus(conn, tenant_id),
             "versions": get_version_shas(),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
     finally:
         await conn.close()
