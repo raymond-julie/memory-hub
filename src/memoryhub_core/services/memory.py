@@ -917,12 +917,17 @@ async def search_memories(
     entity_names: list[str] | None = None,
     content_type: str | None = None,
     temporal_status: str | None = None,
+    keyword_boost_weight: float = 0.15,
+    disabled_signals: set[str] | None = None,
 ) -> list[tuple[MemoryNodeRead | MemoryNodeStub, float]]:
-    """Search memories using pgvector cosine similarity.
+    """Search memories using pgvector cosine similarity with optional keyword recall.
 
     Returns a list of (result, relevance_score) tuples. High-weight results
-    are MemoryNodeRead, low-weight results are MemoryNodeStub. The relevance
-    score is 1.0 - cosine_distance (range 0-1 for normalized vectors).
+    are MemoryNodeRead, low-weight results are MemoryNodeStub.
+
+    When keyword recall is active (default), the relevance score is an RRF
+    blend of cosine and keyword ranks. When keyword is disabled, scoring
+    falls back to cosine-rank-only RRF (equivalent to the previous behavior).
 
     Falls back to weight-based ordering with synthetic scores when pgvector
     is not available (e.g., SQLite in tests).
@@ -935,6 +940,7 @@ async def search_memories(
     filtered to that tenant at the SQL level. Cross-tenant rows are invisible;
     a search that would otherwise match them simply returns fewer results.
     """
+    _disabled = disabled_signals or set()
     query_embedding = await embedding_service.embed(query)
 
     filters = _build_search_filters(
@@ -949,75 +955,131 @@ async def search_memories(
     if filters is None:
         return []
 
+    k_recall = max(RERANK_POOL_SIZE, max_results)
+
     use_pgvector = True
     try:
-        # pgvector cosine distance: smaller = more similar
         distance_expr = MemoryNode.embedding.cosine_distance(query_embedding)
         stmt = (
             select(MemoryNode, distance_expr.label("distance"))
             .where(*filters)
             .order_by(distance_expr)
-            .limit(max_results)
+            .limit(k_recall)
         )
     except Exception:
-        # Fallback for non-pgvector backends (e.g., SQLite in tests)
         use_pgvector = False
         stmt = select(MemoryNode).where(*filters).order_by(MemoryNode.weight.desc()).limit(max_results)
 
     result = await session.execute(stmt)
 
     if use_pgvector:
-        rows = result.all()  # list of (MemoryNode, distance)
-        nodes_with_distance = [(row[0], float(row[1])) for row in rows]
+        rows = result.all()
+        candidate_nodes = [row[0] for row in rows]
+        rank_cosine: dict[uuid.UUID, int] = {
+            node.id: idx for idx, node in enumerate(candidate_nodes, start=1)
+        }
     else:
-        nodes = result.scalars().all()
-        total = len(nodes) if nodes else 1
-        # Synthetic scores: rank-based descending from 1.0
-        nodes_with_distance = [(node, i / total) for i, node in enumerate(nodes)]
+        candidate_nodes = list(result.scalars().all())
+        total = len(candidate_nodes) if candidate_nodes else 1
+        results: list[tuple[MemoryNodeRead | MemoryNodeStub, float]] = []
+        node_ids = [n.id for n in candidate_nodes]
+        branch_flags = await _bulk_branch_flags(node_ids, session)
+        for i, node in enumerate(candidate_nodes):
+            score = 1.0 - (i / total)
+            has_children, has_rationale, branch_count = branch_flags.get(
+                node.id, (False, False, 0)
+            )
+            if node.weight >= weight_threshold:
+                results.append((node_to_read(
+                    node, has_children=has_children,
+                    has_rationale=has_rationale, branch_count=branch_count,
+                ), score))
+            else:
+                results.append((MemoryNodeStub(
+                    id=node.id, parent_id=node.parent_id, stub=node.stub,
+                    scope=node.scope, weight=node.weight,
+                    branch_type=node.branch_type, has_children=has_children,
+                    has_rationale=has_rationale,
+                    content_type=node.content_type, created_at=node.created_at,
+                ), score))
+        return results
 
-    if not nodes_with_distance:
+    if not candidate_nodes:
         return []
 
-    # Bulk-query branch flags for all result nodes
-    node_ids = [n.id for n, _ in nodes_with_distance]
+    # Keyword recall: tsvector query to find candidates that match query
+    # keywords but may have been missed by vector recall.
+    use_keyword = (
+        keyword_boost_weight > 0.0
+        and use_pgvector
+        and "keyword" not in _disabled
+    )
+    rank_keyword: dict[uuid.UUID, int] = {}
+    if use_keyword:
+        try:
+            tsquery = func.plainto_tsquery("english", query)
+            keyword_stmt = (
+                select(
+                    MemoryNode,
+                    func.ts_rank(MemoryNode.search_vector, tsquery).label("kw_rank"),
+                )
+                .where(*filters, MemoryNode.search_vector.op("@@")(tsquery))
+                .order_by(sa_text("kw_rank DESC"))
+                .limit(k_recall)
+            )
+            kw_result = await session.execute(keyword_stmt)
+            kw_rows = kw_result.all()
+
+            existing_ids = {node.id for node in candidate_nodes}
+            for rank_idx, row in enumerate(kw_rows, start=1):
+                kw_node = row[0]
+                rank_keyword[kw_node.id] = rank_idx
+                if kw_node.id not in existing_ids:
+                    candidate_nodes.append(kw_node)
+                    existing_ids.add(kw_node.id)
+        except Exception as exc:
+            logger.warning("keyword recall failed, skipping: %s", exc)
+            use_keyword = False
+
+    # RRF blend: cosine rank + keyword rank (when active).
+    weight_k = keyword_boost_weight if use_keyword else 0.0
+    weight_q = 1.0 - weight_k
+    miss_rank = k_recall + 1
+
+    scored: list[tuple[MemoryNode, float]] = []
+    for node in candidate_nodes:
+        score_q = weight_q / (RRF_K + rank_cosine.get(node.id, miss_rank))
+        score_k = (
+            weight_k / (RRF_K + rank_keyword.get(node.id, miss_rank))
+            if use_keyword
+            else 0.0
+        )
+        scored.append((node, score_q + score_k))
+    scored.sort(key=lambda pair: pair[1], reverse=True)
+
+    top_nodes = scored[:max_results]
+
+    node_ids = [n.id for n, _ in top_nodes]
     branch_flags = await _bulk_branch_flags(node_ids, session)
 
     results: list[tuple[MemoryNodeRead | MemoryNodeStub, float]] = []
-    for node, distance in nodes_with_distance:
-        relevance_score = max(0.0, 1.0 - distance)
+    for node, rrf_score in top_nodes:
         has_children, has_rationale, branch_count = branch_flags.get(
             node.id, (False, False, 0)
         )
         if node.weight >= weight_threshold:
-            results.append(
-                (
-                    node_to_read(
-                        node,
-                        has_children=has_children,
-                        has_rationale=has_rationale,
-                        branch_count=branch_count,
-                    ),
-                    relevance_score,
-                )
-            )
+            results.append((node_to_read(
+                node, has_children=has_children,
+                has_rationale=has_rationale, branch_count=branch_count,
+            ), rrf_score))
         else:
-            results.append(
-                (
-                    MemoryNodeStub(
-                        id=node.id,
-                        parent_id=node.parent_id,
-                        stub=node.stub,
-                        scope=node.scope,
-                        weight=node.weight,
-                        branch_type=node.branch_type,
-                        has_children=has_children,
-                        has_rationale=has_rationale,
-                        content_type=node.content_type,
-                        created_at=node.created_at,
-                    ),
-                    relevance_score,
-                )
-            )
+            results.append((MemoryNodeStub(
+                id=node.id, parent_id=node.parent_id, stub=node.stub,
+                scope=node.scope, weight=node.weight,
+                branch_type=node.branch_type, has_children=has_children,
+                has_rationale=has_rationale,
+                content_type=node.content_type, created_at=node.created_at,
+            ), rrf_score))
     return results
 
 

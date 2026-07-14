@@ -936,6 +936,7 @@ async def search_memory(
                 entity_names=entities,
                 content_type=content_type,
                 temporal_status=temporal_status,
+                disabled_signals=set(disabled_signals) if disabled_signals else None,
             )
 
             # Pattern detection on the non-focus path: embed the query
@@ -1197,6 +1198,8 @@ async def search_memory(
                 response["focus_fallback_reason"] = focus_meta["fallback_reason"]
         if focus_meta is not None and focus_meta.get("disabled_signals"):
             response["disabled_signals"] = focus_meta["disabled_signals"]
+        elif focus_meta is None and disabled_signals:
+            response["disabled_signals"] = sorted(disabled_signals)
         if graph_depth > 0 and graph_bundle is not None:
             response["graph_neighbors_added"] = graph_bundle.graph_neighbors_added
             if graph_bundle.graph_fallback_reason:
