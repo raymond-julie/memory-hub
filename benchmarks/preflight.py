@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Standalone preflight runner.
 
-Delegates to memoryhub_evalhub.preflight. Requires the evalhub-adapter
-package on the Python path.
+Imports the preflight module directly (bypassing the adapter package
+__init__.py which pulls in the full EvalHub SDK chain).
 
 Usage:
     python benchmarks/preflight.py [--config path/to/config.yaml]
@@ -14,15 +14,23 @@ Environment:
     MEMORYHUB_TENANT_ID -- target tenant (default: amb-benchmark)
 """
 
+import importlib.util
 import sys
 from pathlib import Path
 
-# Add the adapter package to the path so the import works from repo root
-_adapter_src = Path(__file__).resolve().parent / "evalhub-adapter" / "src"
-if str(_adapter_src) not in sys.path:
-    sys.path.insert(0, str(_adapter_src))
-
-from memoryhub_evalhub.preflight import main  # noqa: E402
+_preflight_path = (
+    Path(__file__).resolve().parent
+    / "evalhub-adapter"
+    / "src"
+    / "memoryhub_evalhub"
+    / "preflight.py"
+)
+_spec = importlib.util.spec_from_file_location(
+    "memoryhub_evalhub.preflight", _preflight_path
+)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules[_mod.__name__] = _mod
+_spec.loader.exec_module(_mod)
 
 if __name__ == "__main__":
-    main()
+    _mod.main()
