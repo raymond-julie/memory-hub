@@ -49,9 +49,9 @@ spec:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 600
+            initialDelaySeconds: 180
             periodSeconds: 10
-            failureThreshold: 10
+            failureThreshold: 60
       volumes:
         - name: cache
           persistentVolumeClaim:
