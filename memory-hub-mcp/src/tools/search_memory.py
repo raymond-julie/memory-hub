@@ -521,7 +521,8 @@ async def search_memory(
             description=(
                 "(Advanced) Result detail mode. 'full' (default): full content "
                 "for high-weight matches, stubs for low. 'index': stubs only "
-                "(for exploratory searches). 'full_only': always full content."
+                "(for exploratory searches). 'full_only': always full content, "
+                "no token budget degradation."
             ),
         ),
     ] = "full",
@@ -530,10 +531,11 @@ async def search_memory(
         Field(
             description=(
                 "(Advanced) Soft cap on total response tokens. Past this cap, "
-                "remaining results degrade to stubs. Default 4000."
+                "remaining results degrade to stubs. 0 disables the cap "
+                "(no degradation). Default 4000."
             ),
-            ge=100,
-            le=20000,
+            ge=0,
+            le=200000,
         ),
     ] = 4000,
     include_branches: Annotated[
@@ -1127,6 +1129,11 @@ async def search_memory(
         # that exceed the remaining budget (and everything after them)
         # are degraded to stub form. Stubs are always included so the
         # agent never silently misses a match.
+        #
+        # Budget packing is disabled when:
+        # - mode="full_only": caller explicitly wants full content, no degradation
+        # - max_response_tokens=0: caller explicitly requests no limit
+        skip_budget = mode == "full_only" or max_response_tokens == 0
         budget = max_response_tokens
         budget_exhausted = False
         formatted: list[dict[str, Any]] = []
@@ -1136,7 +1143,7 @@ async def search_memory(
             for item, _score, is_appendix in compilation_meta["ordered_results"]:
                 child_branches = nested_by_parent.get(str(item.id), [])
 
-                if budget_exhausted:
+                if not skip_budget and budget_exhausted:
                     output_item = (
                         _to_stub(item) if isinstance(item, MemoryNodeRead) else item
                     )
@@ -1155,7 +1162,7 @@ async def search_memory(
                 entry, cost = _format_entry_cached(
                     item, child_branches, is_appendix, verbose=verbose,
                 )
-                if isinstance(item, MemoryNodeStub) or cost <= budget:
+                if skip_budget or isinstance(item, MemoryNodeStub) or cost <= budget:
                     formatted.append(entry)
                     budget = max(0, budget - cost)
                 else:
@@ -1176,7 +1183,7 @@ async def search_memory(
             for item, relevance_score in top_level:
                 child_branches = nested_by_parent.get(str(item.id), [])
 
-                if budget_exhausted:
+                if not skip_budget and budget_exhausted:
                     output_item = (
                         _to_stub(item) if isinstance(item, MemoryNodeRead) else item
                     )
@@ -1195,11 +1202,10 @@ async def search_memory(
                     budget = max(0, budget - cost)
                     continue
 
-                # Try the full form first.
                 entry, cost = _format_entry(
                     item, relevance_score, child_branches, verbose=verbose,
                 )
-                if isinstance(item, MemoryNodeStub) or cost <= budget:
+                if skip_budget or isinstance(item, MemoryNodeStub) or cost <= budget:
                     formatted.append(entry)
                     budget = max(0, budget - cost)
                 else:
