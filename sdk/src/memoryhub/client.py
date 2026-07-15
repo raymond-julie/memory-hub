@@ -777,6 +777,8 @@ class MemoryHubClient:
         force: bool = False,
         content_type: str | None = None,
         tenant_id: str | None = None,
+        chunk_target_tokens: int | None = None,
+        chunk_overlap_tokens: int | None = None,
     ) -> WriteResult:
         """Write a new memory.
 
@@ -822,6 +824,10 @@ class MemoryHubClient:
             opts["content_type"] = content_type
         if tenant_id is not None:
             opts["tenant_id"] = tenant_id
+        if chunk_target_tokens is not None:
+            opts["chunk_target_tokens"] = chunk_target_tokens
+        if chunk_overlap_tokens is not None:
+            opts["chunk_overlap_tokens"] = chunk_overlap_tokens
         data = await self._call_action(
             "write",
             content=content,
