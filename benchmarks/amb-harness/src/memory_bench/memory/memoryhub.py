@@ -194,6 +194,7 @@ class MemoryHubProvider(MemoryProvider):
                     search_kwargs["focus"] = name
             if self._return_chunks:
                 search_kwargs["return_chunks"] = True
+                search_kwargs["raw_results"] = True
             results = await client.search(**search_kwargs)
 
         documents = []
