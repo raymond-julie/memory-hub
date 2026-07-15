@@ -3,6 +3,8 @@ kind: Route
 metadata:
   name: granite-embedding
   namespace: embedding-model
+  annotations:
+    haproxy.router.openshift.io/timeout: 120s
 spec:
   to:
     kind: Service

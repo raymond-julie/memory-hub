@@ -13,9 +13,13 @@ spec:
       labels:
         app: granite-embedding
     spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: tei
-          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+          image: ghcr.io/huggingface/text-embeddings-inference:1.9
           args:
             - --model-id
             - ibm-granite/granite-embedding-small-english-r2
@@ -30,11 +34,13 @@ spec:
             - containerPort: 8080
           resources:
             requests:
-              cpu: "2"
-              memory: 8Gi
+              cpu: "1"
+              memory: 4Gi
+              nvidia.com/gpu: "1"
             limits:
               cpu: "4"
-              memory: 16Gi
+              memory: 8Gi
+              nvidia.com/gpu: "1"
           volumeMounts:
             - name: cache
               mountPath: /data
@@ -42,7 +48,7 @@ spec:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 600
+            initialDelaySeconds: 300
             periodSeconds: 30
             failureThreshold: 3
           readinessProbe:
