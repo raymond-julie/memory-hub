@@ -80,7 +80,8 @@ class HttpEmbeddingService(EmbeddingService):
             "MEMORYHUB_EMBEDDING_URL",
             "http://localhost:8080/embed",
         )
-        self._client = httpx.AsyncClient(timeout=30.0)
+        timeout = float(os.environ.get("MEMORYHUB_EMBEDDING_TIMEOUT", "120"))
+        self._client = httpx.AsyncClient(timeout=timeout)
 
     async def embed(self, text: str) -> list[float]:
         try:
