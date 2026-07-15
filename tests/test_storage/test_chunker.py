@@ -100,3 +100,47 @@ def test_single_long_sentence_becomes_own_chunk():
     chunks = semantic_chunk(long_sentence)
     assert len(chunks) == 1
     assert chunks[0] == long_sentence
+
+
+# --- Overlap ---
+
+def test_overlap_zero_matches_no_overlap():
+    para = "A" * 500
+    text = f"{para}\n\n{para}\n\n{para}"
+    assert semantic_chunk(text, overlap_tokens=0) == semantic_chunk(text)
+
+
+def test_overlap_produces_shared_content():
+    # 8 short paragraphs (~80 chars each). target=64 tokens (256 chars).
+    # ~3 paras per chunk. overlap=32 tokens (128 chars) carries ~1 para forward.
+    paras = [f"Paragraph {i} with some filler text here." for i in range(8)]
+    text = "\n\n".join(paras)
+    chunks = semantic_chunk(text, target_tokens=64, overlap_tokens=32)
+    assert len(chunks) >= 2
+    for i in range(len(chunks) - 1):
+        overlap = set(chunks[i].split("\n\n")) & set(chunks[i + 1].split("\n\n"))
+        assert overlap, f"Chunks {i} and {i+1} share no content"
+
+
+def test_overlap_preserves_unit_boundaries():
+    # Overlap should carry whole units, not split mid-sentence
+    sentences = [f"Sentence number {i} is here." for i in range(20)]
+    text = " ".join(sentences)
+    chunks = semantic_chunk(text, target_tokens=32, overlap_tokens=8)
+    for chunk in chunks:
+        # Each chunk should end with a complete sentence (period)
+        assert chunk.rstrip().endswith("."), f"Chunk breaks mid-sentence: {chunk[-30:]}"
+
+
+def test_overlap_single_chunk_unaffected():
+    text = "Short content."
+    assert semantic_chunk(text, overlap_tokens=100) == ["Short content."]
+
+
+def test_overlap_larger_than_chunk_does_not_loop():
+    # overlap > target should not cause infinite loops
+    paras = [f"Para {i}. " + "y" * 100 for i in range(5)]
+    text = "\n\n".join(paras)
+    chunks = semantic_chunk(text, target_tokens=32, overlap_tokens=64)
+    assert len(chunks) >= 2
+    # Just verify it terminates and produces output

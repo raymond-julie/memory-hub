@@ -226,6 +226,8 @@ async def create_memory(
                 embedding_service=embedding_service,
                 session=session,
                 now=now,
+                chunk_target_tokens=data.chunk_target_tokens,
+                chunk_overlap_tokens=data.chunk_overlap_tokens,
             )
         except Exception:
             logger.warning(
@@ -266,13 +268,20 @@ async def _create_chunk_children(
     embedding_service: EmbeddingService,
     session: AsyncSession,
     now: datetime,
+    chunk_target_tokens: int | None = None,
+    chunk_overlap_tokens: int | None = None,
 ) -> bool:
     """Create semantic chunk children for an oversized memory.
 
     Returns True if chunks were created, False if the content produced
     only a single chunk (not worth splitting).
     """
-    chunks = semantic_chunk(content)
+    chunk_kwargs: dict[str, int] = {}
+    if chunk_target_tokens is not None:
+        chunk_kwargs["target_tokens"] = chunk_target_tokens
+    if chunk_overlap_tokens is not None:
+        chunk_kwargs["overlap_tokens"] = chunk_overlap_tokens
+    chunks = semantic_chunk(content, **chunk_kwargs)
     if len(chunks) <= 1:
         return False
 

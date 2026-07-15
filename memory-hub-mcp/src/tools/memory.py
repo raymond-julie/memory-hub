@@ -62,6 +62,7 @@ _WRITE_OPTS = frozenset({
     "weight", "parent_id", "branch_type", "metadata", "domains",
     "project_description", "force", "owner_id", "content_type",
     "driver_id", "relevant_until", "tenant_id",
+    "chunk_target_tokens", "chunk_overlap_tokens",
 })
 _UPDATE_OPTS = frozenset({"weight", "metadata", "domains", "driver_id"})
 _SET_RULE_OPTS = frozenset({

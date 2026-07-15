@@ -86,6 +86,14 @@ class MemoryNodeCreate(BaseModel):
         default=None,
         description="Semantic expiry timestamp. NULL means evergreen or version-bound.",
     )
+    chunk_target_tokens: int | None = Field(
+        default=None,
+        description="Target tokens per chunk. None uses the server default (256).",
+    )
+    chunk_overlap_tokens: int | None = Field(
+        default=None,
+        description="Overlap tokens between consecutive chunks. None uses the server default (0).",
+    )
 
 
 class MemoryNodeUpdate(BaseModel):

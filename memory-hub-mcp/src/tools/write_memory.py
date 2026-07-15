@@ -211,6 +211,26 @@ async def write_memory(
             ),
         ),
     ] = None,
+    chunk_target_tokens: Annotated[
+        int | None,
+        Field(
+            description=(
+                "(Advanced) Target tokens per chunk for oversized content. "
+                "Omit to use the server default (256). Smaller values "
+                "produce more focused chunks; larger values preserve more context."
+            ),
+        ),
+    ] = None,
+    chunk_overlap_tokens: Annotated[
+        int | None,
+        Field(
+            description=(
+                "(Advanced) Overlap tokens between consecutive chunks. "
+                "Omit to use the server default (0). Overlap preserves "
+                "context at chunk boundaries for better retrieval."
+            ),
+        ),
+    ] = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """Create a new memory node or branch in the memory tree.
@@ -390,6 +410,10 @@ async def write_memory(
     )
     if content_type is not None:
         create_kwargs["content_type"] = content_type
+    if chunk_target_tokens is not None:
+        create_kwargs["chunk_target_tokens"] = chunk_target_tokens
+    if chunk_overlap_tokens is not None:
+        create_kwargs["chunk_overlap_tokens"] = chunk_overlap_tokens
     try:
         node_create = MemoryNodeCreate(**create_kwargs)
     except ValidationError as exc:

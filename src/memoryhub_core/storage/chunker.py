@@ -19,6 +19,7 @@ _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 def semantic_chunk(
     content: str,
     target_tokens: int = _DEFAULT_TARGET_TOKENS,
+    overlap_tokens: int = 0,
 ) -> list[str]:
     """Split content into semantically coherent chunks.
 
@@ -26,6 +27,7 @@ def semantic_chunk(
     1. Split on paragraph boundaries (double newline).
     2. If a paragraph exceeds the target, split on sentence boundaries.
     3. Greedily accumulate units until the next would exceed the target.
+    4. Optionally carry trailing units forward as overlap prefix.
 
     Returns a list of non-empty chunk strings. A single-chunk result means
     the content was small enough to fit in one chunk (caller should skip
@@ -35,6 +37,7 @@ def semantic_chunk(
         return []
 
     max_chars = int(target_tokens * _CHARS_PER_TOKEN)
+    overlap_chars = int(overlap_tokens * _CHARS_PER_TOKEN) if overlap_tokens > 0 else 0
 
     # Step 1: split into paragraphs
     paragraphs = re.split(r"\n\n+", content.strip())
@@ -54,20 +57,33 @@ def semantic_chunk(
     if not units:
         return []
 
-    # Step 3: greedily accumulate into chunks
+    # Step 3: greedily accumulate into chunks with optional overlap
     chunks: list[str] = []
     current: list[str] = []
     current_len = 0
 
     for unit in units:
         unit_len = len(unit)
-        # separator length: "\n\n" between units in a chunk
         sep_len = 2 if current else 0
 
         if current and (current_len + sep_len + unit_len) > max_chars:
             chunks.append("\n\n".join(current))
-            current = [unit]
-            current_len = unit_len
+            # Carry trailing units forward as overlap prefix
+            if overlap_chars > 0:
+                carry: list[str] = []
+                carry_len = 0
+                for u in reversed(current):
+                    u_sep = 2 if carry else 0
+                    if carry_len + u_sep + len(u) > overlap_chars:
+                        break
+                    carry.append(u)
+                    carry_len += u_sep + len(u)
+                carry.reverse()
+                current = carry + [unit]
+                current_len = sum(len(u) for u in current) + 2 * (len(current) - 1)
+            else:
+                current = [unit]
+                current_len = unit_len
         else:
             current.append(unit)
             current_len += sep_len + unit_len
