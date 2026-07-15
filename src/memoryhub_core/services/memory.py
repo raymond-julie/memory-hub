@@ -998,7 +998,11 @@ async def search_memories(
     if filters is None:
         return []
 
-    k_recall = max(RERANK_POOL_SIZE, max_results)
+    # Fetch a larger recall pool to compensate for chunk-to-parent collapse.
+    # After expansion, multiple chunk hits from the same parent merge into
+    # one result, so the pre-expansion pool must be larger than max_results.
+    CHUNK_EXPANSION_HEADROOM = 5
+    k_recall = max(RERANK_POOL_SIZE, max_results * CHUNK_EXPANSION_HEADROOM)
 
     use_pgvector = True
     try:
@@ -1374,11 +1378,9 @@ async def search_memories_with_focus(
             pivot_reason=pivot_reason,
         )
 
-    # Recall pool: at least RERANK_POOL_SIZE so the rerank stage has
-    # headroom over max_results, and at least max_results so the
-    # blend has the requested page worth of candidates even when
-    # max_results > RERANK_POOL_SIZE.
-    k_recall = max(RERANK_POOL_SIZE, max_results)
+    # Recall pool: large enough to survive chunk-to-parent collapse.
+    CHUNK_EXPANSION_HEADROOM = 5
+    k_recall = max(RERANK_POOL_SIZE, max_results * CHUNK_EXPANSION_HEADROOM)
 
     use_pgvector = True
     try:
