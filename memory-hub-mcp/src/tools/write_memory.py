@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 FACT_EXTRACTION_TIMEOUT = 15.0
 _PROMPT_DIR = Path(__file__).resolve().parents[3] / "prompts"
 # Fallback for container deployments where the prompt is co-located
-_PROMPT_DIR_CONTAINER = Path("/opt/app-root/src/prompts")
+_PROMPT_DIR_CONTAINER = Path("/opt/app-root/src/memoryhub_core/prompts")
 
 
 class ExtractedFact(BaseModel):
