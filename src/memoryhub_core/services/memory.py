@@ -1046,6 +1046,7 @@ async def search_memories(
     disabled_signals: set[str] | None = None,
     reranker: RerankerService | None = None,
     return_chunks: bool = False,
+    retrieval_unit: str | None = None,
 ) -> list[tuple[MemoryNodeRead | MemoryNodeStub, float]]:
     """Search memories using pgvector cosine similarity with optional keyword recall.
 
@@ -1215,8 +1216,21 @@ async def search_memories(
         )
         scored.append((node, score_q + score_k))
     scored.sort(key=lambda pair: pair[1], reverse=True)
-    if return_chunks:
+
+    unit = retrieval_unit or ("chunks" if return_chunks else None)
+    if unit == "facts":
+        scored = [(n, s) for n, s in scored if n.branch_type == "fact"]
+    elif unit == "chunks":
         scored = [(n, s) for n, s in scored if n.branch_type == "chunk"]
+    elif unit == "parents":
+        scored = await _expand_chunks_to_parents(scored, session)
+        scored = [(n, s) for n, s in scored if n.branch_type not in ("chunk", "fact")]
+    elif unit == "auto":
+        fact_hits = [(n, s) for n, s in scored if n.branch_type == "fact"]
+        if fact_hits:
+            scored = fact_hits
+        else:
+            scored = await _expand_chunks_to_parents(scored, session)
     else:
         scored = await _expand_chunks_to_parents(scored, session)
 
@@ -1420,6 +1434,7 @@ async def search_memories_with_focus(
     keyword_boost_weight: float = 0.15,
     disabled_signals: set[str] | None = None,
     return_chunks: bool = False,
+    retrieval_unit: str | None = None,
 ) -> FocusedSearchResult:
     """Two-vector retrieval with session focus bias.
 
@@ -1472,6 +1487,7 @@ async def search_memories_with_focus(
             disabled_signals=disabled_signals,
             reranker=reranker,
             return_chunks=return_chunks,
+            retrieval_unit=retrieval_unit,
         )
         return FocusedSearchResult(results=plain)
 
@@ -1745,8 +1761,21 @@ async def search_memories_with_focus(
         )
         blended_scores.append((node, score_q + score_f + score_d + score_g + score_k))
     blended_scores.sort(key=lambda pair: pair[1], reverse=True)
-    if return_chunks:
+
+    unit = retrieval_unit or ("chunks" if return_chunks else None)
+    if unit == "facts":
+        blended_scores = [(n, s) for n, s in blended_scores if n.branch_type == "fact"]
+    elif unit == "chunks":
         blended_scores = [(n, s) for n, s in blended_scores if n.branch_type == "chunk"]
+    elif unit == "parents":
+        blended_scores = await _expand_chunks_to_parents(blended_scores, session)
+        blended_scores = [(n, s) for n, s in blended_scores if n.branch_type not in ("chunk", "fact")]
+    elif unit == "auto":
+        fact_hits = [(n, s) for n, s in blended_scores if n.branch_type == "fact"]
+        if fact_hits:
+            blended_scores = fact_hits
+        else:
+            blended_scores = await _expand_chunks_to_parents(blended_scores, session)
     else:
         blended_scores = await _expand_chunks_to_parents(blended_scores, session)
 
