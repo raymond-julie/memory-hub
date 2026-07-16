@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Extract discrete facts from PersonaMem documents and ingest into MemoryHub.
 
+Supports Gemini (default) and Ollama backends. Set EXTRACTION_BACKEND=ollama
+and OLLAMA_MODEL to use a local model.
+
 Usage:
     source ~/.secrets
     MEMORYHUB_API_KEY=$(cat ~/.config/memoryhub/api-key) \
     MEMORYHUB_DB_PASS=$(oc get secret memoryhub-pg-credentials \
         --context mcp-rhoai -n memoryhub-db -o jsonpath='{.data.password}' | base64 -d) \
     uv run python extract_facts.py [--doc-limit N] [--dry-run]
+
+    # Ollama example:
+    EXTRACTION_BACKEND=ollama OLLAMA_MODEL=deepseek-r1:32b-qwen-distill-q4_K_M \
+    uv run python extract_facts.py --sample 2
 """
 
 from __future__ import annotations
@@ -15,6 +22,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -23,8 +31,6 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
-from google import genai
-from google.genai import types
 from memoryhub import MemoryHubClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -37,7 +43,10 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ID = os.environ.get("MEMORYHUB_FACTS_PROJECT", "amb-facts-lite")
 TENANT_ID = os.environ.get("MEMORYHUB_TENANT_ID", "amb-benchmark")
-MODEL = os.environ.get("EXTRACTION_MODEL", "gemini-3.1-flash-lite")
+BACKEND = os.environ.get("EXTRACTION_BACKEND", "gemini")
+GEMINI_MODEL = os.environ.get("EXTRACTION_MODEL", "gemini-3.1-flash-lite")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "deepseek-r1:32b-qwen-distill-q4_K_M")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
 EXTRACTION_PROMPT = """\
 You are a memory extraction agent. Given a document recording conversations \
@@ -52,7 +61,8 @@ changes in preference over time.
 Do NOT include: inferences not explicitly stated, generalizations, \
 or meta-commentary about the conversation format.
 
-Return a JSON array of strings, one fact per entry. Be thorough -- \
+Return ONLY a JSON array of strings, one fact per entry. No explanation, \
+no markdown, no commentary -- just the JSON array. Be thorough -- \
 capture every fact, even minor ones.
 
 Document:
@@ -60,9 +70,53 @@ Document:
 
 _MAX_RETRIES = 4
 _RETRY_BASE = 5
+_JSON_INSIST_MAX = 3
+
+JSON_INSIST_MESSAGE = (
+    "That response was not valid JSON. I need ONLY a JSON array of strings, "
+    "nothing else. No markdown fences, no explanation, no thinking tags. "
+    "Just: [\"fact one\", \"fact two\", ...]"
+)
 
 
-def extract_facts(client: genai.Client, content: str) -> list[str]:
+def _try_parse_json_array(text: str) -> list[str] | None:
+    """Try to extract a JSON array from text that might have extra content."""
+    text = text.strip()
+
+    # Strip markdown code fences
+    text = re.sub(r"^```(?:json)?\s*\n?", "", text)
+    text = re.sub(r"\n?```\s*$", "", text)
+    text = text.strip()
+
+    # Strip deepseek-r1 <think>...</think> blocks
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+    # Try direct parse first
+    try:
+        result = json.loads(text)
+        if isinstance(result, list):
+            return [f.strip() for f in result if isinstance(f, str) and f.strip()]
+    except json.JSONDecodeError:
+        pass
+
+    # Try to find a JSON array in the text
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if match:
+        try:
+            result = json.loads(match.group())
+            if isinstance(result, list):
+                return [f.strip() for f in result if isinstance(f, str) and f.strip()]
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+def _extract_gemini(content: str) -> list[str]:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client()
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
         temperature=0.0,
@@ -72,23 +126,72 @@ def extract_facts(client: genai.Client, content: str) -> list[str]:
     for attempt in range(_MAX_RETRIES):
         try:
             response = client.models.generate_content(
-                model=MODEL, contents=prompt, config=config,
+                model=GEMINI_MODEL, contents=prompt, config=config,
             )
-            text = response.text.strip()
-            facts = json.loads(text)
-            if isinstance(facts, list):
-                return [f.strip() for f in facts if isinstance(f, str) and f.strip()]
-            logger.warning("Extraction returned non-list: %s", type(facts))
-            return []
+            facts = _try_parse_json_array(response.text)
+            if facts is not None:
+                return facts
+            logger.warning("Gemini returned unparseable response (attempt %d)", attempt + 1)
         except Exception as e:
             if "RESOURCE_EXHAUSTED" in str(e) and attempt < _MAX_RETRIES - 1:
                 logger.warning("Rate limited, retrying in %ds...", delay)
                 time.sleep(delay)
                 delay *= 2
                 continue
-            logger.error("Extraction failed: %s", e)
+            logger.error("Gemini extraction failed: %s", e)
             return []
     return []
+
+
+def _extract_ollama(content: str) -> list[str]:
+    import httpx
+
+    prompt = EXTRACTION_PROMPT.format(content=content)
+    messages = [{"role": "user", "content": prompt}]
+    # Scale timeout with content length: ~60s per 1K tokens, minimum 120s
+    timeout_s = max(120.0, len(content) / 4 * 0.06)
+
+    for attempt in range(_JSON_INSIST_MAX):
+        try:
+            resp = httpx.post(
+                f"{OLLAMA_URL}/api/chat",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {"temperature": 0.0},
+                },
+                timeout=timeout_s,
+            )
+            resp.raise_for_status()
+            raw = resp.json()["message"]["content"]
+
+            facts = _try_parse_json_array(raw)
+            if facts is not None:
+                if attempt > 0:
+                    logger.info("JSON insistor succeeded on attempt %d", attempt + 1)
+                return facts
+
+            # Insist on valid JSON
+            logger.warning(
+                "Ollama returned non-JSON (attempt %d/%d, %d chars), insisting...",
+                attempt + 1, _JSON_INSIST_MAX, len(raw),
+            )
+            messages.append({"role": "assistant", "content": raw})
+            messages.append({"role": "user", "content": JSON_INSIST_MESSAGE})
+
+        except Exception as e:
+            logger.error("Ollama extraction failed: %s", e)
+            return []
+
+    logger.error("JSON insistor exhausted after %d attempts", _JSON_INSIST_MAX)
+    return []
+
+
+def extract_facts(content: str) -> list[str]:
+    if BACKEND == "ollama":
+        return _extract_ollama(content)
+    return _extract_gemini(content)
 
 
 async def reset_project(project_id: str) -> None:
@@ -123,6 +226,7 @@ async def ingest_facts(
 
     url = os.environ["MEMORYHUB_URL"]
     api_key = os.environ["MEMORYHUB_API_KEY"]
+    model_name = OLLAMA_MODEL if BACKEND == "ollama" else GEMINI_MODEL
 
     await reset_project(PROJECT_ID)
 
@@ -149,7 +253,7 @@ async def ingest_facts(
                         metadata={
                             "source_doc_id": doc_id,
                             "fact_index": i,
-                            "extraction_model": MODEL,
+                            "extraction_model": model_name,
                         },
                     )
                     if result.memory:
@@ -179,18 +283,21 @@ def main():
     if key:
         os.environ["GOOGLE_API_KEY"] = key
 
+    model_name = OLLAMA_MODEL if BACKEND == "ollama" else GEMINI_MODEL
+    logger.info("Backend: %s, Model: %s", BACKEND, model_name)
+
     ds = get_dataset("personamem")
     documents = ds.load_documents("32k")
     if args.doc_limit:
         documents = documents[:args.doc_limit]
     logger.info("Loaded %d PersonaMem documents", len(documents))
 
-    gemini = genai.Client()
     facts_by_doc: list[tuple[str, str, list[str]]] = []
     total_facts = 0
+    json_retries = 0
 
     for i, doc in enumerate(documents):
-        facts = extract_facts(gemini, doc.content)
+        facts = extract_facts(doc.content)
         facts_by_doc.append((doc.id, doc.user_id, facts))
         total_facts += len(facts)
 
