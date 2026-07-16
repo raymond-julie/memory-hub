@@ -175,13 +175,22 @@ class MemoryHubProvider(MemoryProvider):
         finally:
             await engine.dispose()
 
+    def _resolve_k(self, k: int | None) -> int:
+        if k is None or k == 10:
+            return int(os.environ.get("MEMORYHUB_K", "70"))
+        return k
+
     def retrieve(
         self, query: str, k: int | None = None, user_id: str | None = None,
         query_timestamp: str | None = None,
     ) -> tuple[list[Document], dict | None]:
-        if k is None:
-            k = int(os.environ.get("MEMORYHUB_K", "70"))
-        return asyncio.run(self._run_retrieve(query, k, user_id, query_timestamp))
+        return asyncio.run(self._run_retrieve(query, self._resolve_k(k), user_id, query_timestamp))
+
+    async def async_retrieve(
+        self, query: str, k: int = 10, user_id: str | None = None,
+        query_timestamp: str | None = None,
+    ) -> tuple[list[Document], dict | None]:
+        return await asyncio.to_thread(self.retrieve, query, self._resolve_k(k), user_id, query_timestamp)
 
     @staticmethod
     def _extract_persona_name(query: str) -> str | None:
