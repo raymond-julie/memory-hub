@@ -493,9 +493,9 @@ async def search_memory(
     max_results: Annotated[
         int,
         Field(
-            description="Maximum results to return (1-50). Keep low (5-15) to avoid context bloat.",
+            description="Maximum results to return (1-200). Keep low (5-15) to avoid context bloat.",
             ge=1,
-            le=50,
+            le=200,
         ),
     ] = 10,
     weight_threshold: Annotated[
