@@ -1550,6 +1550,7 @@ class MemoryHubClient:
         self,
         scope: str,
         *,
+        scope_id: str | None = None,
         title: str | None = None,
         participant_ids: list[str] | None = None,
         participant_access: dict[str, str] | None = None,
@@ -1558,6 +1559,8 @@ class MemoryHubClient:
     ) -> ConversationThread:
         """Create a new conversation thread."""
         opts: dict[str, Any] = {}
+        if scope_id is not None:
+            opts["scope_id"] = scope_id
         if title is not None:
             opts["title"] = title
         if participant_ids is not None:
