@@ -36,6 +36,7 @@ from memoryhub_core.models.conversation import (
 )
 from memoryhub_core.services.reconciliation import (
     ExtractionCandidate,
+    ReconciliationResult,
     reconcile_candidate,
 )
 
@@ -197,11 +198,13 @@ async def _extract_window(
     model: str,
     url: str,
     embedding_service: Any,
+    extraction_run_id: str,
     s3_adapter: Any | None = None,
-) -> list[uuid.UUID]:
+    dry_run: bool = False,
+) -> list[ReconciliationResult]:
     """Extract memories from a single window of messages.
 
-    Returns list of created memory_node_ids.
+    Returns list of ReconciliationResult decisions from this window.
     """
     system_prompt, prompt_hash = _load_prompt()
     formatted = _format_messages(messages)
@@ -215,7 +218,8 @@ async def _extract_window(
     )
 
     source_seqs = [m.sequence_number for m in messages]
-    created_ids: list[uuid.UUID] = []
+    decisions: list[ReconciliationResult] = []
+    committed_ids: list[uuid.UUID] = []
 
     for item in extractions:
         content = item.get("content", "").strip()
@@ -237,8 +241,6 @@ async def _extract_window(
                 "source_messages": source_seqs,
             },
         }
-
-        extraction_run_id = f"dream:{model}:{prompt_hash}:{datetime.now(UTC).isoformat()}"
 
         candidate = ExtractionCandidate(
             content=content,
@@ -263,7 +265,12 @@ async def _extract_window(
             extraction_run_id=extraction_run_id,
             actor_id=thread.actor_id,
             s3_adapter=s3_adapter,
+            dry_run=dry_run,
         )
+        decisions.append(decision)
+
+        if dry_run:
+            continue
 
         if decision.action == "skip":
             logger.info(
@@ -290,12 +297,12 @@ async def _extract_window(
             tenant_id=thread.tenant_id,
         )
         session.add(extraction_record)
-        created_ids.append(decision.memory_id)
+        committed_ids.append(decision.memory_id)
 
-    if created_ids:
+    if committed_ids:
         await session.commit()
 
-    return created_ids
+    return decisions
 
 
 async def _log_failure(
@@ -322,6 +329,29 @@ async def _log_failure(
     await session.commit()
 
 
+def _check_circuit_breaker(
+    decisions: list[ReconciliationResult],
+    *,
+    max_create_ratio: float = 20.0,
+    min_decisions: int = 5,
+) -> str | None:
+    """Return a reason string if the circuit breaker trips, else None.
+
+    Trips when the create:update ratio exceeds max_create_ratio after
+    at least min_decisions have been made.
+    """
+    if len(decisions) < min_decisions:
+        return None
+    creates = sum(1 for d in decisions if d.action == "create")
+    updates = sum(1 for d in decisions if d.action == "update")
+
+    if updates == 0 and creates >= min_decisions:
+        return f"all creates ({creates}), zero updates (threshold {max_create_ratio}:1)"
+    if updates > 0 and creates / updates > max_create_ratio:
+        return f"create:update ratio {creates}:{updates} exceeds threshold {max_create_ratio}:1"
+    return None
+
+
 async def extract_from_thread(
     session: AsyncSession,
     *,
@@ -333,6 +363,9 @@ async def extract_from_thread(
     model_override: str | None = None,
     url_override: str | None = None,
     turn_range: tuple[int, int] | None = None,
+    dry_run: bool = False,
+    circuit_breaker_ratio: float = 20.0,
+    circuit_breaker_min: int = 5,
 ) -> dict[str, Any]:
     """Extract memories from a conversation thread.
 
@@ -346,9 +379,12 @@ async def extract_from_thread(
         model_override: Override the configured extraction model.
         url_override: Override the configured extraction model URL.
         turn_range: Optional (start_seq, end_seq) to extract only a specific range.
+        dry_run: Produce decisions without committing writes.
+        circuit_breaker_ratio: Max create:update ratio before halting.
+        circuit_breaker_min: Minimum decisions before circuit breaker arms.
 
     Returns:
-        Dict with extracted_count, cursor, failures count.
+        Dict with extracted_count, cursor, failures count, extraction_run_id.
     """
     settings = AppSettings()
     model = model_override or settings.conv_extraction_model
@@ -360,6 +396,9 @@ async def extract_from_thread(
             "Set MEMORYHUB_CONV_EXTRACTION_MODEL and MEMORYHUB_CONV_EXTRACTION_MODEL_URL, "
             "or pass model/model_url in options."
         )
+
+    _, prompt_hash = _load_prompt()
+    extraction_run_id = f"dream:{model}:{prompt_hash}:{datetime.now(UTC).isoformat()}"
 
     # Load thread
     stmt = select(ConversationThread).where(
@@ -401,13 +440,22 @@ async def extract_from_thread(
     messages = list(msg_result.scalars().all())
 
     if not messages:
-        return {"extracted_count": 0, "cursor": thread.extraction_cursor, "failures": 0}
+        return {
+            "extracted_count": 0,
+            "cursor": thread.extraction_cursor,
+            "failures": 0,
+            "extraction_run_id": extraction_run_id,
+        }
 
     # Build windows
     windows = _compute_windows(messages, mode, settings.conv_extraction_window_size)
 
     total_extracted = 0
     total_failures = 0
+    all_decisions: list[ReconciliationResult] = []
+    circuit_breaker_tripped = False
+    circuit_breaker_reason: str | None = None
+    windows_completed = 0
 
     async with httpx.AsyncClient(
         timeout=settings.conv_extraction_timeout, verify=False,
@@ -417,7 +465,7 @@ async def extract_from_thread(
             window_end = window[-1].sequence_number
 
             try:
-                created_ids = await _extract_window(
+                window_decisions = await _extract_window(
                     session,
                     thread=thread,
                     messages=window,
@@ -425,9 +473,15 @@ async def extract_from_thread(
                     model=model,
                     url=url,
                     embedding_service=embedding_service,
+                    extraction_run_id=extraction_run_id,
                     s3_adapter=s3_adapter,
+                    dry_run=dry_run,
                 )
-                total_extracted += len(created_ids)
+                all_decisions.extend(window_decisions)
+                total_extracted += sum(
+                    1 for d in window_decisions
+                    if d.memory_id is not None and d.action != "skip"
+                )
             except Exception as exc:
                 logger.warning(
                     "Extraction failed for thread %s window [%d-%d]: %s",
@@ -443,15 +497,45 @@ async def extract_from_thread(
                 )
                 total_failures += 1
 
+            windows_completed += 1
+
             # Advance cursor past this window regardless of success/failure
             # (design doc: cursor advances past failed windows to avoid blocking)
-            if turn_range is None:
+            if turn_range is None and not dry_run:
                 thread.extraction_cursor = window_end
                 thread.last_extracted_at = datetime.now(UTC)
                 await session.commit()
 
-    return {
+            # Circuit breaker check
+            trip_reason = _check_circuit_breaker(
+                all_decisions,
+                max_create_ratio=circuit_breaker_ratio,
+                min_decisions=circuit_breaker_min,
+            )
+            if trip_reason is not None:
+                circuit_breaker_tripped = True
+                circuit_breaker_reason = trip_reason
+                logger.warning(
+                    "Circuit breaker tripped for run %s: %s",
+                    extraction_run_id, trip_reason,
+                )
+                break
+
+    response: dict[str, Any] = {
         "extracted_count": total_extracted,
         "cursor": thread.extraction_cursor,
         "failures": total_failures,
+        "extraction_run_id": extraction_run_id,
     }
+
+    if dry_run:
+        response["dry_run"] = True
+        response["decisions"] = [d.model_dump() for d in all_decisions]
+
+    if circuit_breaker_tripped:
+        response["circuit_breaker_tripped"] = True
+        response["circuit_breaker_reason"] = circuit_breaker_reason
+        response["windows_completed"] = windows_completed
+        response["windows_total"] = len(windows)
+
+    return response

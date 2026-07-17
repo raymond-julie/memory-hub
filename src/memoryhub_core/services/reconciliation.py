@@ -85,6 +85,7 @@ async def reconcile_candidate(
     actor_id: str | None = None,
     s3_adapter: Any | None = None,
     tiebreaker_fn: TiebreakerFn | None = None,
+    dry_run: bool = False,
 ) -> ReconciliationResult:
     """Reconcile a single extraction candidate against existing memories.
 
@@ -93,7 +94,8 @@ async def reconcile_candidate(
       >= 0.80  LLM tiebreaker; if "same" AND content_type+domain match -> update
       <  0.80  create new memory
 
-    Returns a ReconciliationResult and logs the decision to the DB.
+    When dry_run=True, computes the full decision but skips memory writes
+    and decision logging. Returns ReconciliationResult with memory_id=None.
     """
     stub = candidate.content[:200]
     embedding = await embedding_service.embed(candidate.content)
@@ -149,54 +151,55 @@ async def reconcile_candidate(
         result.action = "create"
         result.reason = "below_threshold"
 
-    # Execute the decided action
-    if result.action == "create":
-        data = MemoryNodeCreate(
-            content=candidate.content,
-            scope=scope,
-            weight=candidate.weight,
-            owner_id=owner_id,
-            scope_id=scope_id,
-            metadata=candidate.metadata,
-            domains=candidate.domains,
-            content_type=candidate.content_type,
-        )
-        if actor_id:
-            data.actor_id = actor_id
-        memory_node, _ = await create_memory(
-            data, session, embedding_service,
-            tenant_id=tenant_id,
-            force=True,
-            s3_adapter=s3_adapter,
-        )
-        if memory_node:
-            result.memory_id = memory_node.id
+    if not dry_run:
+        # Execute the decided action
+        if result.action == "create":
+            data = MemoryNodeCreate(
+                content=candidate.content,
+                scope=scope,
+                weight=candidate.weight,
+                owner_id=owner_id,
+                scope_id=scope_id,
+                metadata=candidate.metadata,
+                domains=candidate.domains,
+                content_type=candidate.content_type,
+            )
+            if actor_id:
+                data.actor_id = actor_id
+            memory_node, _ = await create_memory(
+                data, session, embedding_service,
+                tenant_id=tenant_id,
+                force=True,
+                s3_adapter=s3_adapter,
+            )
+            if memory_node:
+                result.memory_id = memory_node.id
 
-    elif result.action == "update":
-        update_data = MemoryNodeUpdate(content=candidate.content)
-        if candidate.domains is not None:
-            update_data.domains = candidate.domains
-        updated = await update_memory(
-            result.nearest_match_id,
-            update_data,
+        elif result.action == "update":
+            update_data = MemoryNodeUpdate(content=candidate.content)
+            if candidate.domains is not None:
+                update_data.domains = candidate.domains
+            updated = await update_memory(
+                result.nearest_match_id,
+                update_data,
+                session,
+                embedding_service,
+                s3_adapter=s3_adapter,
+                actor_id=actor_id,
+            )
+            result.memory_id = updated.id
+
+        # Log the decision
+        await _log_decision(
             session,
-            embedding_service,
-            s3_adapter=s3_adapter,
-            actor_id=actor_id,
+            result=result,
+            candidate=candidate,
+            owner_id=owner_id,
+            tenant_id=tenant_id,
+            scope=scope,
+            scope_id=scope_id,
+            extraction_run_id=extraction_run_id,
         )
-        result.memory_id = updated.id
-
-    # Log the decision
-    await _log_decision(
-        session,
-        result=result,
-        candidate=candidate,
-        owner_id=owner_id,
-        tenant_id=tenant_id,
-        scope=scope,
-        scope_id=scope_id,
-        extraction_run_id=extraction_run_id,
-    )
 
     return result
 
