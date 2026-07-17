@@ -34,7 +34,10 @@ from memoryhub_core.models.conversation import (
     ConversationMessage,
     ConversationThread,
 )
-from memoryhub_core.models.schemas import MemoryNodeCreate
+from memoryhub_core.services.reconciliation import (
+    ExtractionCandidate,
+    reconcile_candidate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,8 +203,6 @@ async def _extract_window(
 
     Returns list of created memory_node_ids.
     """
-    from memoryhub_core.services.memory import create_memory
-
     system_prompt, prompt_hash = _load_prompt()
     formatted = _format_messages(messages)
 
@@ -237,36 +238,50 @@ async def _extract_window(
             },
         }
 
-        data = MemoryNodeCreate(
+        extraction_run_id = f"dream:{model}:{prompt_hash}:{datetime.now(UTC).isoformat()}"
+
+        candidate = ExtractionCandidate(
             content=content,
-            scope=thread.scope,
             weight=weight,
-            owner_id=thread.owner_id,
-            actor_id=thread.actor_id,
-            scope_id=thread.scope_id,
-            metadata=metadata,
+            content_type=item.get("content_type", "experiential"),
             domains=domains,
+            metadata=metadata,
+            thread_id=thread.id,
+            source_messages=source_seqs,
+            extraction_model=model,
+            extraction_prompt_hash=prompt_hash,
         )
 
-        memory_node, curation_result = await create_memory(
-            data,
+        decision = await reconcile_candidate(
+            candidate,
+            thread.owner_id,
+            thread.scope,
+            thread.scope_id,
             session,
             embedding_service,
             tenant_id=thread.tenant_id,
+            extraction_run_id=extraction_run_id,
+            actor_id=thread.actor_id,
             s3_adapter=s3_adapter,
         )
 
-        if memory_node is None:
+        if decision.action == "skip":
             logger.info(
-                "Extraction blocked by curation for thread %s: %s",
-                thread.id, curation_result.get("reason"),
+                "Reconciliation skipped duplicate for thread %s (score=%.3f)",
+                thread.id, decision.similarity_score or 0,
             )
             continue
 
-        # Record provenance
+        if decision.memory_id is None:
+            logger.warning(
+                "Reconciliation %s produced no memory for thread %s",
+                decision.action, thread.id,
+            )
+            continue
+
         extraction_record = ConversationExtraction(
             id=uuid.uuid4(),
-            memory_node_id=memory_node.id,
+            memory_node_id=decision.memory_id,
             thread_id=thread.id,
             source_messages=source_seqs,
             extracted_by="conversation_extraction_pipeline",
@@ -275,7 +290,7 @@ async def _extract_window(
             tenant_id=thread.tenant_id,
         )
         session.add(extraction_record)
-        created_ids.append(memory_node.id)
+        created_ids.append(decision.memory_id)
 
     if created_ids:
         await session.commit()
