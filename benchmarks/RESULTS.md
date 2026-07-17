@@ -25,17 +25,18 @@ Raw result JSON files are committed alongside this document in `benchmarks/`.
 | MemPalace (semantic only) | LongMemEval | 0.966 | -- | -- | Wu et al., ICLR 2025 |
 | GPT-4o (no memory layer) | LongMemEval | ~0.30-0.70 | -- | -- | Wu et al., ICLR 2025 |
 
-| **MemoryHub v0.2** | PersonaMem 32k (589q) | **81.2%** | -- | -- | This document, 2026-07-12 |
+| **MemoryHub v0.3 (Granite)** | PersonaMem 32k (589q) | **84.9%** | -- | -- | This document, 2026-07-16 |
 | Hindsight | PersonaMem 32k | 86.6% | -- | -- | AMB leaderboard |
 | hybrid-search | PersonaMem 32k | 84.4% | -- | -- | AMB leaderboard |
 | Cognee | PersonaMem 32k | 81.8% | -- | -- | AMB leaderboard |
+| MemoryHub v0.2 (MiniLM) | PersonaMem 32k (589q) | 81.2% | -- | -- | This document, 2026-07-12 |
 | BM25 baseline | PersonaMem 32k | 67.7% | -- | -- | This document, 2026-07-12 |
 
 Notes:
 - MemPalace numbers are from the LongMemEval paper's reported "session decomposition + fact-augmented key expansion + time-aware query expansion" pipeline.
 - Our run uses the oracle variant (evidence sessions only, not the full 115K-token haystack). The oracle variant isolates retrieval quality from the haystack-filtering step. Running LongMemEval_S (full haystack) is the next comparison point.
-- MemoryHub uses all-MiniLM-L6-v2 (384-dim) embeddings. MemPalace uses text-embedding-3-large (3072-dim). Despite the 8x smaller embedding, MemoryHub's hybrid pipeline (vector + keyword + RRF) achieves higher recall.
-- PersonaMem accuracy column shows MCQ exact-match accuracy (not R@k). MemoryHub and BM25 both used Gemini 3.1 Pro Preview as the answer LLM; leaderboard systems also used Gemini 3.1 Pro Preview. BM25 number shown is the Flash Lite run (67.7%); Pro partial run (140/589) was trending at 72.9%.
+- MemoryHub v0.3 uses granite-embedding-english + granite-reranker-english-r2 (GPU). MemoryHub v0.2 used all-MiniLM-L6-v2 (384-dim). MemPalace uses text-embedding-3-large (3072-dim).
+- PersonaMem accuracy column shows MCQ exact-match accuracy (not R@k). All MemoryHub and leaderboard runs use Gemini 3.1 Pro Preview as the answer LLM. BM25 number shown is the Flash Lite run (67.7%).
 
 ## Benchmark Inventory
 
@@ -69,6 +70,30 @@ Notes:
 | **MemoryHub** | **Hybrid search, no extraction, no chunking in benchmark path** | **81.2%** |
 
 Result files: `amb-outputs/personamem/_archive/memoryhub-pro-unchunked-20260712/`, `amb-outputs/personamem/_archive/memoryhub-flash-lite-unchunked-20260712/`, `amb-outputs/personamem/bm25/`
+
+#### Run: 2026-07-16 (v0.3, Granite embeddings + reranker, Gemini 3.1 Pro Preview)
+
+**Pipeline state:** Fresh ingest with Granite embeddings (granite-embedding-english on L40S GPU) and granite-reranker-english-r2 (L40S GPU, 8192-token max). Hybrid search with RRF blend. No chunking, no fact extraction in this run. Documents ingested into `amb-granite-pro` project.
+
+**Answer LLM:** Gemini 3.1 Pro Preview (leaderboard-comparable).
+
+| Provider | Model | Queries | Correct | Accuracy |
+|----------|-------|---------|---------|----------|
+| **MemoryHub (Granite)** | **Gemini 3.1 Pro Preview** | **589** | **500** | **84.9%** |
+
+**AMB Leaderboard comparison (all using Gemini 3.1 Pro Preview):**
+
+| System | Approach | Accuracy |
+|--------|----------|----------|
+| Hindsight | LLM fact extraction into semantic graph | 86.6% |
+| **MemoryHub (Granite)** | **Granite embed + reranker, hybrid search, no extraction** | **84.9%** |
+| hybrid-search | 512-token chunking, dense+sparse embeddings | 84.4% |
+| Cognee | Chunking + graph entity extraction | 81.8% |
+| MemoryHub (MiniLM) | MiniLM embed, no reranker on PersonaMem | 81.2% |
+
+**Delta from v0.2:** +3.7pp (84.9% vs 81.2%). The gain comes from Granite embeddings and the Granite reranker now being able to score PersonaMem's long transcripts (8192-token max vs old 512-token limit that fell back to cosine-only).
+
+Result file: `outputs/personamem/granite-pro/rag/32k.json`
 
 #### Run: 2026-07-12 (v0.2, SDK provider with chunking, Flash Lite)
 

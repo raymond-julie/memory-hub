@@ -1,5 +1,6 @@
 import logging
 import time
+from concurrent.futures import TimeoutError as FuturesTimeout
 
 from google import genai
 from google.genai import types
@@ -18,11 +19,14 @@ _TYPE_MAP = {
 # Retry config for 429 RESOURCE_EXHAUSTED
 _MAX_RETRIES = 6
 _RETRY_BASE_DELAY = 5   # seconds — doubles on each attempt (5, 10, 20, 40, 80, 160)
+_REQUEST_TIMEOUT = 120   # seconds — per-request timeout to prevent indefinite hangs
 
 
 class GeminiLLM(LLM):
     def __init__(self, model: str = "gemini-2.5-flash-lite"):
-        self._client = genai.Client()
+        self._client = genai.Client(
+            http_options={"timeout": _REQUEST_TIMEOUT * 1000},
+        )
         self._model = model
 
     @property
@@ -154,9 +158,11 @@ class GeminiLLM(LLM):
                 msg = str(e)
                 retryable = (
                     isinstance(e, ServerError)
+                    or isinstance(e, (TimeoutError, FuturesTimeout))
                     or "429" in msg or "RESOURCE_EXHAUSTED" in msg
                     or any(code in msg for code in ("500", "502", "503", "504", "529"))
                     or "UNAVAILABLE" in msg or "INTERNAL" in msg or "Bad Gateway" in msg
+                    or "timed out" in msg.lower() or "timeout" in msg.lower()
                 )
                 if retryable and attempt < _MAX_RETRIES - 1:
                     if "quota" in msg.lower() or "RESOURCE_EXHAUSTED" in msg:
