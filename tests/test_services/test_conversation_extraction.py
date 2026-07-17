@@ -231,6 +231,7 @@ class TestExtractWindow:
                     url="http://test",
                     client=MagicMock(),
                     embedding_service=mock_embedding,
+                    extraction_run_id="test-run-001",
                 )
 
         # Verify reconcile_candidate was called
@@ -250,8 +251,10 @@ class TestExtractWindow:
         assert extraction_record.extraction_model == "test-model"
         assert len(extraction_record.extraction_prompt_hash) == 64  # SHA-256
 
-        # Verify result
-        assert result == [mock_memory_id]
+        # Verify result contains the decision
+        assert len(result) == 1
+        assert result[0].action == "create"
+        assert result[0].memory_id == mock_memory_id
         assert session.commit.called
 
     @pytest.mark.asyncio
@@ -284,11 +287,14 @@ class TestExtractWindow:
                     url="http://test",
                     client=MagicMock(),
                     embedding_service=mock_embedding,
+                    extraction_run_id="test-run-001",
                 )
 
         # No provenance record should be created for skipped items
         assert session.add.call_count == 0
-        assert result == []
+        # Result contains the skip decision, but no provenance was created
+        assert len(result) == 1
+        assert result[0].action == "skip"
 
     @pytest.mark.asyncio
     async def test_extract_window_filters_low_weight(self):
@@ -309,9 +315,10 @@ class TestExtractWindow:
                 url="http://test",
                 client=MagicMock(),
                 embedding_service=mock_embedding,
+                extraction_run_id="test-run-001",
             )
 
-        # Should skip the extraction
+        # Should skip the extraction (filtered before reconciliation)
         assert result == []
 
     @pytest.mark.asyncio
@@ -333,9 +340,10 @@ class TestExtractWindow:
                 url="http://test",
                 client=MagicMock(),
                 embedding_service=mock_embedding,
+                extraction_run_id="test-run-001",
             )
 
-        # Should skip the extraction
+        # Should skip the extraction (filtered before reconciliation)
         assert result == []
 
 
@@ -362,7 +370,13 @@ class TestExtractFromThread:
         ]
 
         with patch("memoryhub_core.services.dreaming._extract_window") as mock_extract:
-            mock_extract.return_value = [uuid.uuid4()]
+            from memoryhub_core.services.reconciliation import ReconciliationResult
+            mock_extract.return_value = [
+                ReconciliationResult(
+                    candidate_stub="test", action="create",
+                    memory_id=uuid.uuid4(), reason="no_similar_memory",
+                ),
+            ]
 
             mock_embedding = MagicMock()
             result = await extract_from_thread(
@@ -381,6 +395,7 @@ class TestExtractFromThread:
         assert isinstance(thread.last_extracted_at, datetime)
         assert result["extracted_count"] == 1
         assert result["cursor"] == 2
+        assert "extraction_run_id" in result
 
     @pytest.mark.asyncio
     async def test_extract_from_thread_no_messages(self):
@@ -438,7 +453,13 @@ class TestExtractFromThread:
         ]
 
         with patch("memoryhub_core.services.dreaming._extract_window") as mock_extract:
-            mock_extract.return_value = [uuid.uuid4()]
+            from memoryhub_core.services.reconciliation import ReconciliationResult
+            mock_extract.return_value = [
+                ReconciliationResult(
+                    candidate_stub="test", action="create",
+                    memory_id=uuid.uuid4(), reason="no_similar_memory",
+                ),
+            ]
 
             mock_embedding = MagicMock()
             result = await extract_from_thread(
@@ -454,7 +475,7 @@ class TestExtractFromThread:
 
         # With turn_range, cursor should NOT advance
         assert thread.extraction_cursor == 0
-        assert result["extracted_count"] == 2  # 2 windows
+        assert result["extracted_count"] == 2  # 2 windows, 1 create each
 
     @pytest.mark.asyncio
     async def test_extract_from_thread_logs_failure_to_db(self):

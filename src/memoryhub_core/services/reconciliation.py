@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from memoryhub_core.models.conversation import ConversationExtraction
