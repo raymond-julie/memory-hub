@@ -21,6 +21,9 @@ Optional env vars:
     MEMORYHUB_CHUNK_OVERLAP_TOKENS -- overlap tokens between chunks (default: 0)
     MEMORYHUB_EXTRACT_FACTS        -- fact extraction mode: eager, background, off
                                      (default: None = server default)
+    MEMORYHUB_INGESTION_MODE       -- "library" (default) or "dreaming"
+    MEMORYHUB_EXTRACTION_MODEL     -- extraction model name (dreaming mode only)
+    MEMORYHUB_EXTRACTION_MODEL_URL -- extraction model endpoint (dreaming mode only)
 
 Reset-only env vars (raw SQL DELETE for test scaffolding):
     MEMORYHUB_DB_HOST    -- default localhost
@@ -35,6 +38,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +73,9 @@ class MemoryHubProvider(MemoryProvider):
         self._chunk_target_tokens: int | None = None
         self._chunk_overlap_tokens: int | None = None
         self._extract_facts: str | None = None
+        self._ingestion_mode: str = "library"
+        self._extraction_model: str | None = None
+        self._extraction_model_url: str | None = None
 
     def prepare(self, store_dir: Path, unit_ids: set[str] | None = None, reset: bool = True) -> None:
         self._url = os.environ.get("MEMORYHUB_URL")
@@ -106,6 +113,15 @@ class MemoryHubProvider(MemoryProvider):
         raw_extract = os.environ.get("MEMORYHUB_EXTRACT_FACTS", "").strip().lower()
         self._extract_facts = raw_extract if raw_extract in ("eager", "background", "off") else None
 
+        raw_mode = os.environ.get("MEMORYHUB_INGESTION_MODE", "library").strip().lower()
+        if raw_mode not in ("library", "dreaming"):
+            raise RuntimeError(
+                f"MEMORYHUB_INGESTION_MODE must be 'library' or 'dreaming', got '{raw_mode}'"
+            )
+        self._ingestion_mode = raw_mode
+        self._extraction_model = os.environ.get("MEMORYHUB_EXTRACTION_MODEL", "").strip() or None
+        self._extraction_model_url = os.environ.get("MEMORYHUB_EXTRACTION_MODEL_URL", "").strip() or None
+
         self._doc_to_memory_id.clear()
         self._memory_to_doc_id.clear()
         self._reset = reset
@@ -118,6 +134,12 @@ class MemoryHubProvider(MemoryProvider):
             await self._reset_benchmark_data()
             self._reset = False
 
+        if self._ingestion_mode == "dreaming":
+            await self._run_dreaming_ingest(documents)
+        else:
+            await self._run_library_ingest(documents)
+
+    async def _run_library_ingest(self, documents: list[Document]) -> None:
         async with MemoryHubClient(url=self._url, api_key=self._api_key) as client:
             try:
                 await client.create_project(
@@ -162,23 +184,120 @@ class MemoryHubProvider(MemoryProvider):
 
         logger.info("Ingestion complete: %d documents", len(documents))
 
+    async def _run_dreaming_ingest(self, documents: list[Document]) -> None:
+        """Ingest via dreaming mode: threads + extraction per session."""
+        persona_sessions: dict[str, list[Document]] = defaultdict(list)
+        for doc in documents:
+            persona_sessions[doc.user_id or "default"].append(doc)
+        for pid in persona_sessions:
+            persona_sessions[pid].sort(key=lambda d: d.id)
+
+        total_sessions = sum(len(ss) for ss in persona_sessions.values())
+        total_personas = len(persona_sessions)
+        sessions_done = 0
+        total_extractions = 0
+        total_failures = 0
+
+        async with MemoryHubClient(url=self._url, api_key=self._api_key) as client:
+            try:
+                await client.create_project(
+                    self._project_id,
+                    description="AMB benchmark memory isolation (dreaming mode)",
+                )
+                logger.info("Created project %s", self._project_id)
+            except Exception:
+                logger.debug("Project %s already exists", self._project_id)
+
+            for p_idx, (persona_id, sessions) in enumerate(
+                sorted(persona_sessions.items()), 1
+            ):
+                thread = await client.create_thread(
+                    scope="project",
+                    scope_id=self._project_id,
+                    title=f"PersonaMem {persona_id}",
+                    metadata={
+                        "persona_id": persona_id,
+                        "benchmark": "personamem",
+                        "session_count": len(sessions),
+                    },
+                )
+                logger.info(
+                    "Persona %d/%d (%s): thread %s, %d sessions",
+                    p_idx, total_personas, persona_id, thread.id, len(sessions),
+                )
+
+                for s_idx, doc in enumerate(sessions, 1):
+                    for msg in doc.messages or []:
+                        content = msg.get("content", "")
+                        if not content.strip():
+                            continue
+                        msg_meta: dict[str, Any] = {"session_doc_id": doc.id}
+                        if doc.timestamp:
+                            msg_meta["session_timestamp"] = doc.timestamp
+                        await client.append_message(
+                            thread.id,
+                            role=msg.get("role", "user"),
+                            content=content,
+                            metadata=msg_meta,
+                        )
+
+                    extract_kwargs: dict[str, Any] = {}
+                    if self._extraction_model:
+                        extract_kwargs["model"] = self._extraction_model
+                    if self._extraction_model_url:
+                        extract_kwargs["model_url"] = self._extraction_model_url
+
+                    result = await client.extract_thread(thread.id, **extract_kwargs)
+                    total_extractions += result.extracted_count
+                    total_failures += result.failures
+                    sessions_done += 1
+
+                    logger.info(
+                        "Persona %s session %d/%d (doc %s): "
+                        "extracted=%d cursor=%d failures=%d [%d/%d overall]",
+                        persona_id, s_idx, len(sessions), doc.id,
+                        result.extracted_count, result.cursor, result.failures,
+                        sessions_done, total_sessions,
+                    )
+
+        logger.info(
+            "Dreaming ingestion complete: %d personas, %d sessions, "
+            "%d extracted memories, %d failures",
+            total_personas, total_sessions, total_extractions, total_failures,
+        )
+
     async def _reset_benchmark_data(self) -> None:
         """Delete previous benchmark data via raw SQL (test scaffolding)."""
         engine = create_async_engine(self._db_url, pool_size=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
             async with session_factory() as session:
-                result = await session.execute(
+                mem_result = await session.execute(
                     text(
                         "DELETE FROM memory_nodes "
                         "WHERE owner_id LIKE 'amb-%' AND scope_id = :project_id"
                     ),
                     {"project_id": self._project_id},
                 )
+                thread_result = await session.execute(
+                    text(
+                        "DELETE FROM conversation_threads "
+                        "WHERE owner_id LIKE 'amb-%' AND scope_id = :project_id"
+                    ),
+                    {"project_id": self._project_id},
+                )
+                recon_result = await session.execute(
+                    text(
+                        "DELETE FROM reconciliation_decisions "
+                        "WHERE owner_id LIKE 'amb-%' AND scope_id = :project_id"
+                    ),
+                    {"project_id": self._project_id},
+                )
                 await session.commit()
                 logger.info(
-                    "Deleted %d AMB benchmark memories for project %s",
-                    result.rowcount, self._project_id,
+                    "Reset project %s: %d memories, %d threads, %d recon decisions",
+                    self._project_id,
+                    mem_result.rowcount, thread_result.rowcount, recon_result.rowcount,
                 )
         finally:
             await engine.dispose()

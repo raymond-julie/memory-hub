@@ -22,7 +22,7 @@ _VALID_ACTIONS = frozenset({
 
 _CREATE_OPTS = frozenset({
     "title", "participant_ids", "participant_access",
-    "a2a_context_id", "metadata",
+    "a2a_context_id", "scope_id", "metadata",
 })
 _APPEND_OPTS = frozenset({"actor_id", "tool_call_id", "metadata", "a2a_context_id"})
 _GET_OPTS = frozenset({"limit", "before_sequence", "include_messages"})

@@ -512,6 +512,7 @@ class ConversationThreadCreate(BaseModel):
         default=None,
         description="Access level per participant: {'agent-id': 'read'|'write'|'admin'}",
     )
+    scope_id: str | None = Field(default=None, description="Scope identifier (e.g. project ID)")
     metadata: dict[str, Any] | None = Field(default=None, description="Extensible metadata")
 
     @field_validator("participant_access")

@@ -119,6 +119,7 @@ async def create_thread(
         "id": uuid.uuid4(),
         "tenant_id": tenant_id,
         "scope": data.scope,
+        "scope_id": data.scope_id,
         "owner_id": owner_id,
         "actor_id": actor_id,
         "driver_id": driver_id,
